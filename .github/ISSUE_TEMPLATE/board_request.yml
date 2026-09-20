@@ -1,0 +1,37 @@
+name: Board or locale support
+description: Ask for a keyboard or a host locale to be supported
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: kind
+    attributes:
+      label: What is missing
+      options: ['A keyboard', 'A host locale', 'Both']
+    validations:
+      required: true
+
+  - type: input
+    id: board
+    attributes:
+      label: Keyboard make and model
+
+  - type: input
+    id: locale
+    attributes:
+      label: Host locale
+      placeholder: en-GB-mac, de-DE, fr-FR
+
+  - type: textarea
+    id: export
+    attributes:
+      label: Can you attach a layout export
+      description: >
+        A real export is the single most useful thing you can provide. Please
+        check it for anything personal first, such as text macros.
+
+  - type: markdown
+    attributes:
+      value: |
+        Adding a board needs its physical geometry, which is the slow part. See
+        [docs/board-definitions.md](../../docs/board-definitions.md) if you would
+        like to contribute it yourself.

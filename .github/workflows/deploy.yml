@@ -1,0 +1,61 @@
+name: Deploy
+
+# Deployment is kept in its own workflow and behind a switch, for two reasons.
+#
+# GitHub Pages cannot publish from a private repository without a paid plan, so
+# while this repository is private the switch stays off and CI simply keeps the
+# built site as an artifact.
+#
+# The build is a plain static bundle with no server and no runtime network calls,
+# so the host is interchangeable. Only the last step here is host-specific: point
+# it at Cloudflare Pages or anywhere else and nothing above it changes.
+#
+# To turn it on: set the repository variable PAGES_ENABLED to "true" under
+# Settings, Secrets and variables, Actions, Variables. Then enable Pages with
+# "GitHub Actions" as the source.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: GitHub Pages
+    if: vars.PAGES_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build for a project site served from a subpath
+        run: npm run build
+        env:
+          VITE_BASE: /${{ github.event.repository.name }}/
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

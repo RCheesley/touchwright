@@ -1,0 +1,58 @@
+name: Bug report
+description: Something behaved wrongly
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        If this is something that happened while you were typing, please say so.
+        Bugs found by a person mid-drill are the ones that matter most here, and
+        they get a permanent named test in the regression suite.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you saw, and what you expected instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: How to reproduce it
+      placeholder: |
+        1. Load my layout
+        2. Start lesson 3
+        3. Type a few words, then ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: mid-drill
+    attributes:
+      label: Did this happen while you were typing a drill?
+      options:
+        - 'Yes, mid-drill'
+        - 'No, elsewhere in the app'
+        - 'Not sure'
+    validations:
+      required: true
+
+  - type: input
+    id: board
+    attributes:
+      label: Keyboard and layout
+      placeholder: Glove80, Maltron, en-GB-mac
+
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and operating system
+      placeholder: Firefox 142 on macOS 15
+
+  - type: textarea
+    id: console
+    attributes:
+      label: Anything in the browser console
+      render: text

@@ -1,0 +1,46 @@
+name: Accessibility problem
+description: Something was unusable or hard to use
+labels: [accessibility]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Accessibility requirements here are acceptance criteria, not polish. If
+        something blocked you, that is a bug and it will be treated as one.
+
+  - type: textarea
+    id: barrier
+    attributes:
+      label: What blocked you
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: how
+    attributes:
+      label: How were you using the app
+      options:
+        - label: Keyboard only
+        - label: Screen reader
+        - label: Magnification or high zoom
+        - label: High contrast or forced colours
+        - label: Reduced motion
+        - label: Voice control or switch access
+
+  - type: input
+    id: assistive-tech
+    attributes:
+      label: Assistive technology and version, if any
+      placeholder: VoiceOver on macOS 15, or NVDA 2025.2 on Windows 11
+
+  - type: dropdown
+    id: theme
+    attributes:
+      label: Which theme
+      options: [Light, Dark, Either, Not sure]
+
+  - type: input
+    id: wcag
+    attributes:
+      label: Related WCAG criterion, if you know it
+      placeholder: 2.1.2 No Keyboard Trap

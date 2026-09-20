@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Touchwright</title>
+    <meta
+      name="description"
+      content="A typing trainer that reads your keyboard's firmware keymap and builds the lesson ladder around it."
+    />
+  </head>
+  <body>
+    <a class="skip-link" href="#main">Skip to main content</a>
+    <header class="masthead">
+      <h1>Touchwright</h1>
+      <p class="tagline">
+        A typing trainer that reads your keyboard's firmware keymap and builds the lesson ladder
+        around it.
+      </p>
+    </header>
+
+    <main id="main">
+      <section aria-labelledby="load-heading">
+        <h2 id="load-heading">Load your layout</h2>
+        <p>
+          Export your layout from the MoErgo Layout Editor and choose the file here. Nothing is
+          uploaded anywhere; the file is read in your browser.
+        </p>
+        <p>
+          <label class="field">
+            <span>Layout export (JSON)</span>
+            <input id="layout-file" type="file" accept="application/json,.json" />
+          </label>
+        </p>
+        <p id="layout-status" role="status" aria-live="polite"></p>
+        <div id="layout-error" role="alert" hidden></div>
+      </section>
+
+      <section id="summary" aria-labelledby="summary-heading" hidden>
+        <h2 id="summary-heading">What that layout looks like</h2>
+        <dl id="summary-list"></dl>
+      </section>
+    </main>
+
+    <footer class="colophon">
+      <p>
+        MoErgo and Glove80 are trademarks of MoErgo. Maltron is a trademark of PCD Maltron Ltd. This
+        project is not affiliated with or endorsed by either.
+      </p>
+    </footer>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
