@@ -60,6 +60,57 @@
           <ul id="board-key-list" class="board-key-list"></ul>
         </details>
       </section>
+
+      <!--
+        The drill surface.
+
+        How to escape the keyboard capture is stated here in visible text, not in
+        a title attribute, because that is an acceptance criterion rather than a
+        nicety. The readout above the text names the next key's hand, finger and
+        row in words and is the primary channel; the board highlight above only
+        reinforces it.
+      -->
+      <section id="drill-section" aria-labelledby="drill-heading" hidden>
+        <h2 id="drill-heading">Practise</h2>
+        <p id="drill-how">
+          Choose <em>Start drill</em> and type what you see.
+          <strong>Press Escape at any time to give the keyboard back.</strong> The page then works
+          as usual, and <em>Resume drill</em> picks up exactly where you left off. Tab always moves
+          focus, even while the drill has the keyboard.
+        </p>
+        <p class="drill-controls">
+          <button id="drill-start" type="button" class="button button-solid">Start drill</button>
+          <button id="drill-reset" type="button" class="button button-outline">Start over</button>
+        </p>
+        <p id="drill-next" class="drill-next"></p>
+        <div
+          id="drill-surface"
+          class="drill-surface"
+          tabindex="0"
+          role="group"
+          aria-label="Drill text"
+          aria-describedby="drill-next drill-escape"
+        >
+          <p id="drill-text" class="drill-text"></p>
+        </div>
+        <p id="drill-escape" class="drill-hint">
+          Escape releases the keyboard from anywhere in the drill.
+        </p>
+        <p id="drill-capture" class="drill-hint" role="status" aria-live="polite"></p>
+        <p id="drill-progress" class="drill-progress" role="status" aria-live="polite"></p>
+        <p id="drill-error" class="drill-error" role="alert" hidden></p>
+
+        <div id="drill-result" class="drill-result" hidden>
+          <h3>How that went</h3>
+          <p id="drill-result-summary" class="drill-result-summary" role="alert"></p>
+          <dl id="drill-result-detail"></dl>
+          <p id="drill-result-why"></p>
+          <p class="drill-controls">
+            <button id="drill-continue" type="button" class="button button-solid"></button>
+            <span class="drill-hint">Or press any key to start the next drill.</span>
+          </p>
+        </div>
+      </section>
     </main>
 
     <footer class="colophon">

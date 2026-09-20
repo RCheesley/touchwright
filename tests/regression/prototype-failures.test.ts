@@ -10,6 +10,8 @@
  * Do not delete one of these because it looks obvious. Each cost a real session.
  */
 
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CONTINUE_GRACE_MS,
@@ -29,6 +31,94 @@ import {
   type Progress,
 } from '../../src/stats/storage.js';
 import { contrastRatio, AA_NON_TEXT, AA_TEXT } from '../../src/ui/contrast.js';
+import {
+  renderDrillText,
+  SAMPLE_DRILL_TEXT,
+  type DrillTextRender,
+} from '../../src/ui/drill-view.js';
+
+/**
+ * The stylesheet the app actually ships, comments stripped.
+ *
+ * Read from disk rather than described here, because regressions 6 and 8 are
+ * both about what the stylesheet says: a rule renamed or deleted has to fail
+ * these, not pass them.
+ */
+function readTheme(): string {
+  return readFileSync(join(process.cwd(), 'src', 'ui', 'theme.css'), 'utf8').replace(
+    /\/\*[\s\S]*?\*\//g,
+    '',
+  );
+}
+
+/** Every leaf rule in source order. An at-rule prelude carries no declarations. */
+function leafRules(css: string): readonly { selector: string; body: string }[] {
+  const found: { selector: string; body: string }[] = [];
+  const pattern = /([^{}]+)\{([^{}]*)\}/g;
+  let match = pattern.exec(css);
+  while (match !== null) {
+    found.push({ selector: (match[1] ?? '').trim(), body: match[2] ?? '' });
+    match = pattern.exec(css);
+  }
+  return found;
+}
+
+function parseDeclarations(body: string): Map<string, string> {
+  const declarations = new Map<string, string>();
+  for (const part of body.split(';')) {
+    const colon = part.indexOf(':');
+    if (colon === -1) continue;
+    declarations.set(part.slice(0, colon).trim(), part.slice(colon + 1).trim());
+  }
+  return declarations;
+}
+
+/**
+ * The declarations of one rule. Throws when the selector is not in the
+ * stylesheet, because a test that silently found nothing would pass for the
+ * wrong reason, which is exactly how the original bug survived.
+ */
+function declarationsFor(css: string, selector: string): Map<string, string> {
+  const rule = leafRules(css).find((candidate) => candidate.selector === selector);
+  if (rule === undefined) {
+    throw new Error(`theme.css has no rule for "${selector}"`);
+  }
+  return parseDeclarations(rule.body);
+}
+
+/** The custom properties in force in one theme; dark overlays light. */
+function themeTokens(css: string, theme: 'light' | 'dark'): Map<string, string> {
+  const darkAt = css.search(/@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)/);
+  if (darkAt === -1) {
+    throw new Error('theme.css declares no dark theme');
+  }
+  const scope = theme === 'light' ? css.slice(0, darkAt) : css.slice(darkAt);
+  const root = leafRules(scope).find((rule) => rule.selector === ':root');
+  if (root === undefined) {
+    throw new Error(`theme.css has no :root block for the ${theme} theme`);
+  }
+
+  const tokens = theme === 'dark' ? themeTokens(css, 'light') : new Map<string, string>();
+  for (const [property, value] of parseDeclarations(root.body)) {
+    if (property.startsWith('--')) tokens.set(property, value);
+  }
+  return tokens;
+}
+
+/** Resolve var() against a theme's tokens. A missing token throws. */
+function resolveColour(value: string, tokens: ReadonlyMap<string, string>): string {
+  let resolved = value;
+  for (let depth = 0; depth < 10; depth += 1) {
+    const reference = /var\(\s*(--[\w-]+)\s*(?:,[^()]*)?\)/.exec(resolved);
+    if (reference?.[1] === undefined) return resolved.trim();
+    const token = tokens.get(reference[1]);
+    if (token === undefined) {
+      throw new Error(`theme.css uses ${reference[1]}, which no :root block defines`);
+    }
+    resolved = resolved.replace(reference[0], token);
+  }
+  throw new Error(`Could not resolve ${value}: custom properties nest too deeply`);
+}
 
 /** Deep-freeze, to stand in for progress arriving from an external store. */
 function deepFreeze<T>(value: T): T {
@@ -389,9 +479,97 @@ describe('regression 6: words must not break across lines', () => {
   //
   // Acceptance criteria: at 320, 600 and 1200 CSS pixels, no word straddles two
   // lines. Measured from client rects, not from the markup.
+  //
+  // Both halves of that are here. jsdom has no layout engine, so the client-rect
+  // measurement itself lives in `tests/e2e/drill.spec.ts`, under these same
+  // names, where a real browser lays the paragraph out at all three widths in
+  // both themes. What these two guard is everything that measurement depends on:
+  // the structure that makes an internal break impossible, the stylesheet rule
+  // that forbids one, and the width budget that keeps the longest word inside
+  // the narrowest line. A sample text with a 40-character word would pass the
+  // structural half and fail here, which is the point.
 
-  it.todo('keeps every word on one line at 320 CSS pixels');
-  it.todo('keeps every word on one line at 600 and 1200 CSS pixels');
+  /** Space each side of the page, from --space, applied to main. */
+  const PAGE_GUTTER_PX = 16;
+  /** .drill-surface: 0.75rem of padding and a 2px border, each side. */
+  const SURFACE_INSET_PX = 12 + 2;
+  /** --measure, 38rem, caps how wide the column ever gets. */
+  const MEASURE_PX = 38 * 16;
+  /** A monospace advance is close to 0.6em; rounded up, so the budget is cautious. */
+  const ADVANCE_RATIO = 0.62;
+
+  /** .drill-text: clamp(1rem, 0.85rem + 1.2vw, 1.375rem). */
+  function drillFontSizePx(viewportWidth: number): number {
+    const preferred = 0.85 * 16 + (1.2 * viewportWidth) / 100;
+    return Math.min(Math.max(16, preferred), 1.375 * 16);
+  }
+
+  /** How many characters of drill text fit on one line at this viewport width. */
+  function lineBudgetChars(viewportWidth: number): number {
+    const column = Math.min(viewportWidth, MEASURE_PX) - PAGE_GUTTER_PX * 2 - SURFACE_INSET_PX * 2;
+    return Math.floor(column / (drillFontSizePx(viewportWidth) * ADVANCE_RATIO));
+  }
+
+  /** The words the surface will render, and the elements they are rendered as. */
+  function renderSample(): DrillTextRender {
+    return renderDrillText(SAMPLE_DRILL_TEXT);
+  }
+
+  function longestWord(rendered: DrillTextRender): string {
+    return rendered.wordTexts.reduce(
+      (longest, word) => (word.length > longest.length ? word : longest),
+      '',
+    );
+  }
+
+  /** `white-space` for .drill-word, read from the stylesheet the app ships. */
+  function drillWordWhiteSpace(): string | undefined {
+    return declarationsFor(readTheme(), '.drill-word').get('white-space');
+  }
+
+  it('keeps every word on one line at 320 CSS pixels', () => {
+    const rendered = renderSample();
+
+    // Structure: every character of a word is inside that word's element, so
+    // there is no break opportunity between two characters of the same word.
+    expect(rendered.words.length).toBeGreaterThan(1);
+    for (const [index, word] of rendered.words.entries()) {
+      expect(word.textContent, `word ${index}`).toBe(rendered.wordTexts[index]);
+      expect(word.textContent).not.toMatch(/\s/u);
+    }
+    // And no loose character is left in the paragraph except the whitespace that
+    // is meant to be where a line breaks.
+    for (const node of rendered.nodes) {
+      const loose = node.classList.contains('drill-char');
+      expect(loose ? node.textContent : ' ').toMatch(/\s/u);
+    }
+
+    // The rule that forbids an internal break, stated by the stylesheet itself.
+    expect(drillWordWhiteSpace()).toBe('nowrap');
+
+    // And the narrowest line still has room for the longest word, so nothing has
+    // to overflow to stay unbroken.
+    const widest = longestWord(rendered);
+    expect(widest.length, `"${widest}" at 320 CSS pixels`).toBeLessThanOrEqual(
+      lineBudgetChars(320),
+    );
+  });
+
+  it('keeps every word on one line at 600 and 1200 CSS pixels', () => {
+    const rendered = renderSample();
+    const widest = longestWord(rendered);
+
+    for (const width of [600, 1200]) {
+      const budget = lineBudgetChars(width);
+      expect(budget, `line budget at ${width} CSS pixels`).toBeGreaterThan(0);
+      expect(widest.length, `"${widest}" at ${width} CSS pixels`).toBeLessThanOrEqual(budget);
+    }
+
+    // A wider viewport must not change the structure that keeps a word together:
+    // it is the same markup and the same rule at every width.
+    expect(drillWordWhiteSpace()).toBe('nowrap');
+    expect(declarationsFor(readTheme(), '.drill-text').get('overflow-wrap')).toBe('normal');
+  });
 });
 
 describe('regression 7: storage keys must be safe', () => {
@@ -454,6 +632,98 @@ describe('regression 8: button contrast in both themes', () => {
     expect(contrastRatio('#fdfdfd', '#ffffff')).toBeLessThan(AA_NON_TEXT);
   });
 
-  it.todo('checks both button variants against their real backgrounds in the light theme');
-  it.todo('checks both button variants against their real backgrounds in the dark theme');
+  /** Both variants, so neither can be added without being measured. */
+  const VARIANTS = ['.button-solid', '.button-outline'] as const;
+  /** The two surfaces a button can sit on: the page, and a sunken panel. */
+  const BEHIND = ['--surface', '--surface-sunken'] as const;
+
+  interface Painted {
+    readonly ink: string;
+    readonly background: string;
+    readonly borderColour: string;
+    readonly behind: readonly string[];
+  }
+
+  /**
+   * What a variant actually paints in one theme, resolved through the same
+   * custom properties the browser resolves. A variant that declares no colour or
+   * no background of its own throws, because that is the hole the theme rule fell
+   * through the first time.
+   */
+  function painted(variant: string, theme: 'light' | 'dark'): Painted {
+    const css = readTheme();
+    const tokens = themeTokens(css, theme);
+    const declarations = declarationsFor(css, variant);
+
+    const ink = declarations.get('color');
+    const background = declarations.get('background') ?? declarations.get('background-color');
+    const borderColour = declarations.get('border-color');
+    if (ink === undefined || background === undefined || borderColour === undefined) {
+      throw new Error(
+        `${variant} must declare its own color, background and border-color, or a theme rule can outrank it`,
+      );
+    }
+
+    return {
+      ink: resolveColour(ink, tokens),
+      background: resolveColour(background, tokens),
+      borderColour: resolveColour(borderColour, tokens),
+      behind: BEHIND.map((token) => resolveColour(`var(${token})`, tokens)),
+    };
+  }
+
+  function expectReadable(variant: string, theme: 'light' | 'dark'): void {
+    const { ink, background, borderColour, behind } = painted(variant, theme);
+
+    expect(
+      contrastRatio(ink, background),
+      `${variant} in the ${theme} theme: ${ink} on ${background}`,
+    ).toBeGreaterThanOrEqual(AA_TEXT);
+
+    // The shape of the original bug, stated directly: white on white.
+    expect(
+      contrastRatio(ink, background),
+      `${variant} in the ${theme} theme is invisible`,
+    ).toBeGreaterThan(1.5);
+
+    // And the button's own edge has to be findable on either page surface, which
+    // is what makes an outline button a button at all.
+    for (const surface of behind) {
+      expect(
+        contrastRatio(borderColour, surface),
+        `${variant} border ${borderColour} on ${surface} in the ${theme} theme`,
+      ).toBeGreaterThanOrEqual(AA_NON_TEXT);
+    }
+  }
+
+  it('checks both button variants against their real backgrounds in the light theme', () => {
+    for (const variant of VARIANTS) expectReadable(variant, 'light');
+
+    // The cascade shape, not just the numbers: only the variant rules may give a
+    // button a colour. A theme rule that painted one would show up here.
+    const painters = leafRules(readTheme())
+      .filter((rule) => /button/i.test(rule.selector))
+      .filter((rule) => {
+        const declarations = parseDeclarations(rule.body);
+        return (
+          declarations.has('color') ||
+          declarations.has('background') ||
+          declarations.has('background-color')
+        );
+      })
+      .map((rule) => rule.selector);
+    expect(painters.sort()).toEqual([...VARIANTS].sort());
+  });
+
+  it('checks both button variants against their real backgrounds in the dark theme', () => {
+    for (const variant of VARIANTS) expectReadable(variant, 'dark');
+
+    // Every variant is re-measured in the dark theme rather than assumed, because
+    // the dark theme is where the specificity accident happened.
+    for (const variant of VARIANTS) {
+      const light = painted(variant, 'light');
+      const dark = painted(variant, 'dark');
+      expect(dark.ink, `${variant} did not change with the theme`).not.toBe(light.ink);
+    }
+  });
 });
