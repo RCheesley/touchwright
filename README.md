@@ -123,16 +123,41 @@ Built and tested:
 - Drill time limits, where untimed is a real state rather than a zero.
 - WCAG contrast maths, checked against computed styles in both themes.
 
-Not built yet:
+Not built yet — and this is the honest state of it: **you can load a layout and
+see what it found, but you cannot yet type against it.**
 
-- The board render, the generated lesson ladder, the drill engine, scoring,
-  repair drills, sprint mode.
-- Of the eight regressions in `tests/regression/`, four are asserted and four are
-  named `todo` with their acceptance criteria written out. They are filled in as
-  the features they guard land.
-- ZMK `.keymap` devicetree parsing, a second board, and contributed board
-  definitions are out of scope for version one. The seams are designed; the
-  features are not built.
+Of the eight regressions in `tests/regression/`, four are asserted and four are
+named `todo` with their acceptance criteria written out. They are filled in as
+the features they guard land, never afterwards.
+
+## Roadmap
+
+Everything left for version one is tracked as an issue, in dependency order.
+
+| Issue                                                     | What                                      | Needs  |
+| --------------------------------------------------------- | ----------------------------------------- | ------ |
+| [#1](https://github.com/RCheesley/touchwright/issues/1)   | Generate the lesson ladder                | —      |
+| [#2](https://github.com/RCheesley/touchwright/issues/2)   | Drill engine, a pure state machine        | —      |
+| [#4](https://github.com/RCheesley/touchwright/issues/4)   | Scoring: wpm, accuracy, xp, stars         | —      |
+| [#5](https://github.com/RCheesley/touchwright/issues/5)   | Render the board as SVG                   | —      |
+| [#3](https://github.com/RCheesley/touchwright/issues/3)   | Drill text: clusters, words, prose        | #1     |
+| [#6](https://github.com/RCheesley/touchwright/issues/6)   | Drill surface, escapable keyboard capture | #2, #5 |
+| [#7](https://github.com/RCheesley/touchwright/issues/7)   | Per-key statistics and repair drills      | #2, #3 |
+| [#8](https://github.com/RCheesley/touchwright/issues/8)   | Sprint mode, adjustable and disableable   | #2, #3 |
+| [#9](https://github.com/RCheesley/touchwright/issues/9)   | Ladder, statistics, export and import     | #1, #4 |
+| [#10](https://github.com/RCheesley/touchwright/issues/10) | Usable with a screen reader               | #6     |
+
+[#1](https://github.com/RCheesley/touchwright/issues/1) is the only one with real
+design risk: the brief requires the generated ladder to match the prototype's
+hand-authored one or to differ only in documented, defended ways.
+
+[#10](https://github.com/RCheesley/touchwright/issues/10) is marked help wanted.
+If you use a screen reader, that feedback is worth more than anything the tooling
+can tell us.
+
+Out of scope for version one, with the seams designed but nothing built: ZMK
+`.keymap` devicetree parsing, a second board, contributed board definitions, and
+any server.
 
 ## Deployment
 
