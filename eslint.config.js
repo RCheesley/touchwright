@@ -3,7 +3,16 @@ import tseslint from 'typescript-eslint';
 import playwright from 'eslint-plugin-playwright';
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'coverage/**', 'playwright-report/**', 'test-results/**'] },
+  {
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'playwright-report/**',
+      'test-results/**',
+      // Agent worktrees are full checkouts of this repo living inside it.
+      '.claude/worktrees/**',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.strictTypeChecked,
   {
@@ -43,6 +52,11 @@ export default tseslint.config(
   {
     files: ['tests/e2e/**/*.ts'],
     ...playwright.configs['flat/recommended'],
+    rules: {
+      ...playwright.configs['flat/recommended'].rules,
+      // expectNoAxeViolations asserts; the rule cannot see through a helper.
+      'playwright/expect-expect': ['warn', { assertFunctionNames: ['expectNoAxeViolations'] }],
+    },
   },
   {
     files: ['tests/**/*.ts'],
