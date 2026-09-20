@@ -11,6 +11,12 @@
  */
 
 import { describe, expect, it } from 'vitest';
+import {
+  CONTINUE_GRACE_MS,
+  createDrill,
+  createDrillSession,
+  KeystrokeHandlerError,
+} from '../../src/drill/engine.js';
 import { hasReachedLimit, NO_LIMIT } from '../../src/drill/limits.js';
 import {
   emptyProgress,
@@ -31,6 +37,20 @@ function deepFreeze<T>(value: T): T {
     Object.freeze(value);
   }
   return value;
+}
+
+/**
+ * A clock the test drives. The engine owns no timer, so every one of these
+ * failures can be reproduced without waiting for real time to pass.
+ */
+function testClock(start = 10_000) {
+  let value = start;
+  return {
+    now: (): number => value,
+    advance(ms: number): void {
+      value += ms;
+    },
+  };
 }
 
 describe('regression 1: progress loaded from an external store may arrive deeply frozen', () => {
@@ -98,9 +118,117 @@ describe('regression 2: an async load must not destroy work in progress', () => 
   //  - and does not reset the drill's start time,
   //  - while a load that resolves before any drill starts does set the lesson.
 
-  it.todo('merges stats from a load that lands mid-drill without touching the drill');
-  it.todo('leaves the drill text and cursor untouched when a load lands mid-drill');
-  it.todo('applies the saved lesson when the load lands before a drill starts');
+  it('merges stats from a load that lands mid-drill without touching the drill', () => {
+    const clock = testClock();
+    const session = createDrillSession({ now: clock.now });
+    const drill = session.start({ text: 'ask', limitMs: NO_LIMIT });
+
+    clock.advance(100);
+    drill.press('a');
+    clock.advance(120);
+    drill.press('s');
+    const startedAt = drill.startedAtMs;
+
+    // Frozen, because that is how an external store hands progress over.
+    const applied = session.applyLoadedProgress(
+      deepFreeze({
+        version: PROGRESS_VERSION,
+        lesson: 4,
+        xp: 120,
+        stars: { home: 3 },
+        keyStats: { [keyStatId('k')]: { hits: 9, misses: 2, totalMs: 900, samples: 9 } },
+      }),
+    );
+
+    expect(applied.drillInProgress).toBe(true);
+    expect(applied.warnings).toEqual([]);
+
+    // The saved statistics arrive,
+    expect(session.progress.keyStats[keyStatId('k')]).toEqual({
+      hits: 9,
+      misses: 2,
+      totalMs: 900,
+      samples: 9,
+    });
+    // and what was typed since first paint is still there.
+    expect(session.progress.keyStats[keyStatId('a')]?.hits).toBe(1);
+    expect(session.progress.keyStats[keyStatId('s')]?.hits).toBe(1);
+    expect(session.progress.xp).toBe(120);
+    expect(session.progress.stars['home']).toBe(3);
+
+    // The drill is the same drill, still running, with its start time intact.
+    expect(session.drill).toBe(drill);
+    expect(drill.startedAtMs).toBe(startedAt);
+    expect(drill.isFinished).toBe(false);
+
+    // And it still works, which is what the learner found was untrue.
+    clock.advance(100);
+    expect(drill.press('k').kind).toBe('correct');
+    expect(drill.result?.completed).toBe(true);
+  });
+
+  it('leaves the drill text and cursor untouched when a load lands mid-drill', () => {
+    const clock = testClock();
+    const session = createDrillSession({ now: clock.now });
+    const drill = session.start({ text: 'ask the' });
+
+    for (const character of ['a', 'z', 'k']) {
+      clock.advance(110);
+      drill.press(character);
+    }
+    const marksBefore = drill.marks;
+    const startedAt = drill.startedAtMs;
+
+    session.applyLoadedProgress(
+      deepFreeze({
+        version: PROGRESS_VERSION,
+        lesson: 6,
+        xp: 30,
+        stars: {},
+        keyStats: { [keyStatId('a')]: { hits: 40, misses: 1, totalMs: 4000, samples: 40 } },
+      }),
+    );
+
+    expect(drill.text).toBe('ask the');
+    expect(drill.cursor).toBe(3);
+    expect(drill.marks).toEqual(marksBefore);
+    expect(drill.marks.slice(0, 3)).toEqual(['correct', 'wrong', 'correct']);
+    expect(drill.next).toEqual({ index: 3, character: ' ' });
+    expect(drill.startedAtMs).toBe(startedAt);
+    expect(drill.totalKeystrokes).toBe(3);
+
+    // The lesson is the one field that would move the ground under a learner
+    // partway through a drill, so mid-drill it waits.
+    expect(session.progress.lesson).toBe(0);
+  });
+
+  it('applies the saved lesson when the load lands before a drill starts', () => {
+    const clock = testClock();
+    const session = createDrillSession({ now: clock.now });
+
+    const first = session.applyLoadedProgress(
+      deepFreeze({ version: PROGRESS_VERSION, lesson: 3, xp: 50, stars: {}, keyStats: {} }),
+    );
+    expect(first.lessonApplied).toBe(true);
+    expect(first.drillInProgress).toBe(false);
+    expect(session.progress.lesson).toBe(3);
+
+    // A drill that exists but has had no keystroke is not work in progress
+    // either, so a load landing then still sets the lesson.
+    const drill = session.start({ text: 'ask' });
+    const second = session.applyLoadedProgress({
+      version: PROGRESS_VERSION,
+      lesson: 5,
+      xp: 0,
+      stars: {},
+      keyStats: {},
+    });
+
+    expect(second.lessonApplied).toBe(true);
+    expect(session.progress.lesson).toBe(5);
+    expect(drill.cursor).toBe(0);
+    expect(drill.startedAtMs).toBeNull();
+  });
 });
 
 describe('regression 3: timers must not outlive their drill', () => {
@@ -129,8 +257,58 @@ describe('regression 4: a finished drill must never swallow input', () => {
   //  - but a short grace period after the drill ends ignores keystrokes, so an
   //    overrun keystroke cannot skip the result before it has been read.
 
-  it.todo('continues from the result screen on any key, not only space');
-  it.todo('ignores keystrokes for a short grace period so an overrun cannot skip the result');
+  it('continues from the result screen on any key, not only space', () => {
+    const clock = testClock();
+    const drill = createDrill({ text: 'as', now: clock.now });
+    clock.advance(100);
+    drill.press('a');
+    clock.advance(100);
+    drill.press('s');
+    expect(drill.isFinished).toBe(true);
+
+    clock.advance(CONTINUE_GRACE_MS);
+
+    // The prototype accepted space alone, so to someone still typing letters the
+    // app simply looked dead.
+    for (const key of ['q', 'Enter', ' ', '7', '.', 'Escape', 'ArrowDown', 'Backspace']) {
+      expect(drill.requestContinue(key).accepted, `key ${JSON.stringify(key)}`).toBe(true);
+    }
+
+    // Modifiers and Tab are the exception: a modifier is not a keystroke, and Tab
+    // belongs to focus navigation, which this app must never trap.
+    for (const key of ['Shift', 'Control', 'Alt', 'Meta', 'Tab']) {
+      const decision = drill.requestContinue(key);
+      expect(decision.accepted, `key ${key}`).toBe(false);
+      expect(decision.reason).toBe('not-a-continue-key');
+    }
+  });
+
+  it('ignores keystrokes for a short grace period so an overrun cannot skip the result', () => {
+    const clock = testClock();
+    const drill = createDrill({ text: 'as', now: clock.now });
+    clock.advance(100);
+    drill.press('a');
+    clock.advance(100);
+    drill.press('s');
+
+    // The keystroke already in flight when the drill ended.
+    const overrun = drill.requestContinue('k');
+    expect(overrun.accepted).toBe(false);
+    expect(overrun.reason).toBe('within-grace');
+    expect(overrun.remainingGraceMs).toBe(CONTINUE_GRACE_MS);
+
+    clock.advance(CONTINUE_GRACE_MS - 1);
+    const stillTooSoon = drill.requestContinue('k');
+    expect(stillTooSoon.accepted).toBe(false);
+    expect(stillTooSoon.remainingGraceMs).toBe(1);
+
+    clock.advance(1);
+    expect(drill.requestContinue('k')).toEqual({
+      accepted: true,
+      reason: 'accepted',
+      remainingGraceMs: 0,
+    });
+  });
 });
 
 describe('regression 5: an error must not silently end a drill', () => {
@@ -142,8 +320,67 @@ describe('regression 5: an error must not silently end a drill', () => {
   //  - the drill is left intact and resumable, not marked complete,
   //  - and nothing is written to progress for the failed keystroke.
 
-  it.todo('surfaces an error when a keystroke handler throws');
-  it.todo('leaves the drill intact rather than marking it complete');
+  it('surfaces an error when a keystroke handler throws', () => {
+    const clock = testClock();
+    const boom = new Error('the stats recorder threw');
+    const session = createDrillSession({ now: clock.now });
+    const drill = session.start({
+      text: 'ask',
+      onKeystroke: () => {
+        throw boom;
+      },
+    });
+
+    clock.advance(100);
+    let thrown: unknown;
+    try {
+      drill.press('a');
+    } catch (error) {
+      thrown = error;
+    }
+
+    // Surfaced rather than swallowed, with the original error attached.
+    expect(thrown).toBeInstanceOf(KeystrokeHandlerError);
+    expect((thrown as KeystrokeHandlerError).cause).toBe(boom);
+
+    // And nothing was written to progress for the keystroke that failed.
+    expect(session.progress.keyStats).toEqual({});
+    expect(session.progress.xp).toBe(0);
+  });
+
+  it('leaves the drill intact rather than marking it complete', () => {
+    const clock = testClock();
+    let failing = false;
+    const session = createDrillSession({ now: clock.now });
+    const drill = session.start({
+      text: 'ask',
+      onKeystroke: () => {
+        if (failing) throw new Error('a hidden crash inside the recorder');
+      },
+    });
+
+    clock.advance(100);
+    drill.press('a');
+    failing = true;
+    clock.advance(100);
+    expect(() => drill.press('s')).toThrow(KeystrokeHandlerError);
+
+    // Not complete, and not advanced past the key that failed.
+    expect(drill.isFinished).toBe(false);
+    expect(drill.result).toBeNull();
+    expect(drill.cursor).toBe(1);
+    expect(drill.marks).toEqual(['correct', 'pending', 'pending']);
+    expect(drill.totalKeystrokes).toBe(1);
+    expect(session.progress.keyStats[keyStatId('s')]).toBeUndefined();
+
+    // Resumable: the drill the learner was in the middle of is still theirs.
+    failing = false;
+    clock.advance(100);
+    expect(drill.press('s').kind).toBe('correct');
+    clock.advance(100);
+    expect(drill.press('k').result?.completed).toBe(true);
+    expect(session.progress.keyStats[keyStatId('s')]?.hits).toBe(1);
+  });
 });
 
 describe('regression 6: words must not break across lines', () => {
