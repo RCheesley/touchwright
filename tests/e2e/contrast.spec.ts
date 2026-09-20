@@ -54,7 +54,7 @@ test('the error message meets AA, because it is the one thing that must be read'
   page,
 }) => {
   await page.goto('./');
-  await page.setInputFiles('#layout-file', {
+  await page.locator('#layout-file').setInputFiles({
     name: 'broken.json',
     mimeType: 'application/json',
     buffer: Buffer.from('nope'),

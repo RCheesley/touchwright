@@ -4,3 +4,6 @@ playwright-report
 test-results
 tests/fixtures
 package-lock.json
+
+# Agent worktrees are checkouts of this repo; never lint or commit them
+.claude/worktrees/

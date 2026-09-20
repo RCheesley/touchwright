@@ -25,6 +25,6 @@ export async function expectNoAxeViolations(page: Page, context: string): Promis
 }
 
 export async function loadReferenceLayout(page: Page): Promise<void> {
-  await page.setInputFiles('#layout-file', REFERENCE_LAYOUT_PATH);
+  await page.locator('#layout-file').setInputFiles(REFERENCE_LAYOUT_PATH);
   await expect(page.locator('#summary')).toBeVisible();
 }

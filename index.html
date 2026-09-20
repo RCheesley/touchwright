@@ -40,6 +40,26 @@
         <h2 id="summary-heading">What that layout looks like</h2>
         <dl id="summary-list"></dl>
       </section>
+
+      <!--
+        The diagram is decorative reinforcement and is marked aria-hidden, so
+        everything it shows is stated here in text as well: the highlighted key in
+        #board-next, the finger colours in #board-legend, and every cap's hand,
+        finger and row in #board-key-list.
+      -->
+      <section id="board-section" aria-labelledby="board-heading" hidden>
+        <h2 id="board-heading">Where those keys are</h2>
+        <p id="board-next"></p>
+        <div id="board-figure"></div>
+        <p id="board-legend-intro">
+          Each cap is outlined in the colour of the finger that owns it.
+        </p>
+        <ul id="board-legend" class="board-legend"></ul>
+        <details id="board-key-detail" class="board-key-detail">
+          <summary>Every key on the board, in words</summary>
+          <ul id="board-key-list" class="board-key-list"></ul>
+        </details>
+      </section>
     </main>
 
     <footer class="colophon">

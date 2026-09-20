@@ -30,7 +30,7 @@ test('reads the reference layout and says what it found', async ({ page }) => {
 });
 
 test('reports a file it cannot read without losing the page', async ({ page }) => {
-  await page.setInputFiles('#layout-file', {
+  await page.locator('#layout-file').setInputFiles({
     name: 'broken.json',
     mimeType: 'application/json',
     buffer: Buffer.from('{ not json'),
@@ -42,13 +42,13 @@ test('reports a file it cannot read without losing the page', async ({ page }) =
   await expect(page.locator('#summary')).toBeHidden();
 
   // And it recovers: a good file after a bad one still works.
-  await page.setInputFiles('#layout-file', REFERENCE_LAYOUT_PATH);
+  await page.locator('#layout-file').setInputFiles(REFERENCE_LAYOUT_PATH);
   await expect(page.locator('#summary')).toBeVisible();
   await expect(error).toBeHidden();
 });
 
 test('refuses a layout for a different keyboard, naming the problem', async ({ page }) => {
-  await page.setInputFiles('#layout-file', {
+  await page.locator('#layout-file').setInputFiles({
     name: 'other.json',
     mimeType: 'application/json',
     buffer: Buffer.from(
