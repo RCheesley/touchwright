@@ -469,6 +469,295 @@ dd {
   font-weight: 600;
 }
 
+/*
+ * The ladder.
+ *
+ * Every rung states its star count in words; the glyph row above it is
+ * aria-hidden decoration. A locked rung says what unlocks it, so "locked" is
+ * never carried by nothing more than a dimmer border.
+ *
+ * Nothing here is laid out at a fixed width: the rungs are a plain list of blocks
+ * that reflow at 320 CSS pixels, and the head wraps rather than scrolling.
+ */
+
+.ladder-current {
+  padding: 0.5rem 0.75rem;
+  border-inline-start: 0.25rem solid var(--accent);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.ladder {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  margin-block: 0.75rem;
+  list-style: none;
+}
+
+.ladder-rung {
+  padding: 0.75rem;
+  border: 1px solid var(--border);
+  border-inline-start: 0.25rem solid var(--border);
+  border-radius: var(--radius);
+}
+
+.ladder-rung[data-state='current'] {
+  border-color: var(--accent);
+  background: var(--surface-sunken);
+}
+
+.ladder-rung[data-state='locked'] {
+  border-inline-start-style: dashed;
+}
+
+.ladder-rung-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+  margin-block: 0 0.25rem;
+}
+
+.ladder-rung-name {
+  font-size: 1.0625rem;
+  font-weight: 600;
+}
+
+.ladder-stars {
+  font-size: 1.125rem;
+  letter-spacing: 0.05em;
+}
+
+.ladder-stars[data-stars='0'] {
+  color: var(--ink-muted);
+}
+
+.ladder-stars-words,
+.ladder-state {
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.ladder-blurb,
+.ladder-keys,
+.ladder-state {
+  margin-block: 0.25rem;
+}
+
+.ladder-keys {
+  font-family: ui-monospace, monospace;
+  font-size: 0.8125rem;
+}
+
+.ladder-action {
+  margin-block: 0.5rem 0;
+}
+
+/*
+ * Statistics, grouped by finger and row.
+ *
+ * The band word carries the meaning; the tint on it and the bar beside it are
+ * reinforcement, and the bar is aria-hidden with the same number printed as text.
+ * Each finger panel is edged in that finger's own colour, which is the same colour
+ * the board diagram uses, so the two views agree without either needing a key.
+ */
+
+.stats-summary {
+  font-weight: 600;
+}
+
+.stats-empty {
+  color: var(--ink-muted);
+}
+
+.stats-finger {
+  padding: 0.75rem;
+  margin-block: 0.75rem;
+  border: 1px solid var(--border);
+  border-inline-start: 0.25rem solid var(--finger, var(--border));
+  border-radius: var(--radius);
+}
+
+.stats-finger[data-finger='pinky'] {
+  --finger: var(--finger-pinky);
+}
+
+.stats-finger[data-finger='ring'] {
+  --finger: var(--finger-ring);
+}
+
+.stats-finger[data-finger='middle'] {
+  --finger: var(--finger-middle);
+}
+
+.stats-finger[data-finger='index'] {
+  --finger: var(--finger-index);
+}
+
+.stats-finger[data-finger='thumb'] {
+  --finger: var(--finger-thumb);
+}
+
+.stats-finger-name {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: baseline;
+  margin-block: 0 0.25rem;
+  font-size: 1rem;
+}
+
+/* Sentence case, not title case: "Right middle finger", never "Right Middle Finger". */
+.stats-finger-label::first-letter,
+.stats-row-name::first-letter {
+  text-transform: uppercase;
+}
+
+.stats-finger-summary,
+.stats-row-summary {
+  margin-block: 0.25rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+  font-weight: 400;
+}
+
+/*
+ * The band, as a word. The tint is a second channel over the top of it, never
+ * the only one, which is why the word itself is in the markup.
+ */
+.stats-band {
+  padding: 0.0625rem 0.375rem;
+  border: 1px solid currentcolor;
+  border-radius: 1rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+
+[data-severity='weak'] > * > .stats-band,
+[data-severity='weak'] > .stats-band {
+  color: var(--danger);
+}
+
+[data-severity='steady'] > * > .stats-band,
+[data-severity='steady'] > .stats-band {
+  color: var(--ink-muted);
+}
+
+.stats-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0;
+  margin-block: 0.5rem 0;
+  list-style: none;
+}
+
+.stats-row {
+  padding-inline-start: 0.625rem;
+  border-inline-start: 2px solid var(--border);
+}
+
+.stats-row[data-severity='weak'] {
+  border-inline-start-color: var(--danger);
+}
+
+.stats-row-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.5rem;
+  align-items: center;
+  margin-block: 0;
+}
+
+.stats-row-name {
+  font-weight: 600;
+}
+
+/* Decoration. The miss rate is printed as a number in the line beneath it. */
+.stats-bar {
+  display: inline-block;
+  inline-size: 4rem;
+  block-size: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 1rem;
+  background: var(--surface);
+}
+
+.stats-bar-fill {
+  display: block;
+  block-size: 100%;
+  border-radius: 1rem;
+  background: var(--danger);
+}
+
+.stats-keys {
+  padding: 0;
+  margin-block: 0.25rem 0;
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.stats-key {
+  display: flex;
+  gap: 0.375rem;
+  align-items: baseline;
+  padding-block: 0.125rem;
+}
+
+.stats-key-cap {
+  flex: none;
+  min-inline-size: 1.5rem;
+  padding-inline: 0.25rem;
+  border: 1px solid var(--board-edge);
+  border-radius: 0.25rem;
+  color: var(--board-cap-ink);
+  font-family: ui-monospace, monospace;
+  text-align: center;
+  background: var(--board-cap);
+}
+
+.stats-steady summary {
+  min-height: 1.5rem;
+  padding-block: 0.25rem;
+  cursor: pointer;
+}
+
+/* Export and import. */
+
+.progress-report {
+  padding: 0.75rem;
+  margin-block: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.progress-report p {
+  margin-block: 0 0.5rem;
+  font-weight: 600;
+}
+
+.progress-report ul {
+  padding-inline-start: 1.25rem;
+  margin-block: 0;
+  font-size: 0.875rem;
+}
+
+#progress-clear[data-armed='true'] {
+  border-style: dashed;
+}
+
+#progress-error {
+  padding: 0.75rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: var(--surface-sunken);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
