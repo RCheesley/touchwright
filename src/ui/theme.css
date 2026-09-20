@@ -315,6 +315,160 @@ dd {
   background: var(--board-cap);
 }
 
+/*
+ * Buttons.
+ *
+ * Two variants, because the prototype shipped an outline button that rendered
+ * white on white: a theme rule with higher specificity than the button's own
+ * colour won the cascade and nothing caught it. Both variants therefore declare
+ * their own colour and their own background from the tokens above, nothing else
+ * in this file paints a button, and both are measured in both themes by
+ * tests/e2e/drill.spec.ts and tests/regression/prototype-failures.test.ts.
+ */
+
+.button {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.9rem;
+  border: 2px solid transparent;
+  border-radius: var(--radius);
+  font: inherit;
+  cursor: pointer;
+}
+
+.button-solid {
+  color: var(--accent-ink);
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.button-outline {
+  color: var(--accent);
+  border-color: var(--accent);
+  background: var(--surface);
+}
+
+/*
+ * The drill surface.
+ *
+ * Words are wrapped so that a line can only break between them: regression 6.
+ * The paragraph keeps its spaces, because a space is a character the learner
+ * types and it carries a mark like any other.
+ */
+
+.drill-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.drill-next {
+  margin-block: 0.5rem;
+  font-weight: 600;
+}
+
+.drill-surface {
+  padding: 0.75rem;
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.drill-surface[data-captured='true'] {
+  border-color: var(--accent);
+}
+
+.drill-text {
+  margin: 0;
+  font-family: ui-monospace, monospace;
+  font-size: clamp(1rem, 0.85rem + 1.2vw, 1.375rem);
+  line-height: 2;
+  white-space: pre-wrap;
+  overflow-wrap: normal;
+}
+
+/*
+ * Regression 6: a word is one unbreakable run, so a line break can only fall on
+ * the whitespace elements between words.
+ */
+.drill-word {
+  white-space: nowrap;
+}
+
+/*
+ * No transition here, deliberately. A mark and the cursor have to land on the
+ * keystroke: a fade leaves the character part-painted, which both lags the
+ * typist and drops the contrast of the text while it is running.
+ */
+.drill-char {
+  padding-block-end: 0.1em;
+  text-decoration-thickness: 0.12em;
+  text-underline-offset: 0.18em;
+  transition: none;
+}
+
+/*
+ * Mark states differ in decoration and weight as well as in colour, because
+ * colour is never allowed to be the only channel. Each character also carries
+ * data-mark, so the state is readable without seeing it at all.
+ */
+
+.drill-char[data-mark='pending'] {
+  color: var(--ink-muted);
+  text-decoration: none;
+}
+
+.drill-char[data-mark='correct'] {
+  color: var(--ink);
+  text-decoration: underline solid var(--accent);
+}
+
+.drill-char[data-mark='wrong'] {
+  color: var(--danger);
+  font-weight: 700;
+  text-decoration: underline wavy var(--danger);
+}
+
+/* The cursor: a filled caret block, not a colour change on its own. */
+.drill-char[data-cursor='true'] {
+  color: var(--accent-ink);
+  border-radius: 0.15em;
+  background: var(--accent);
+}
+
+.drill-hint,
+.drill-progress {
+  margin-block: 0.5rem;
+  color: var(--ink-muted);
+  font-size: 0.875rem;
+}
+
+.drill-error {
+  padding: 0.75rem;
+  border: 1px solid var(--danger);
+  border-radius: var(--radius);
+  color: var(--danger);
+  background: var(--surface-sunken);
+}
+
+.drill-result {
+  padding: 0.75rem;
+  margin-block: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
+
+.drill-result h3 {
+  margin-block: 0 0.5rem;
+  font-size: 1.125rem;
+}
+
+.drill-result-summary {
+  margin-block: 0 0.5rem;
+  font-weight: 600;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

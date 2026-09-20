@@ -1,8 +1,13 @@
 /**
- * The load form.
+ * The load form, and the wiring between a loaded layout and the drill surface.
  *
  * Exported rather than self-invoking so that importing this module has no side
  * effects and a test can drive it against a DOM it built itself.
+ *
+ * This module owns the board diagram, so it also owns the highlight: the drill
+ * surface hands it the next key through `onNextKey` and never draws a keyboard
+ * itself. With no drill running the diagram points at E, which is the most
+ * telling thing about a layout.
  */
 
 import { describeKey, GLOVE80, indexKeys } from '../board/index.js';
@@ -14,36 +19,9 @@ import {
   renderBoard,
   type BoardKeyDescription,
 } from './board-svg.js';
+import { describeFailure, required } from './dom.js';
+import { createDrillView, SAMPLE_DRILL_TEXT, type DrillView } from './drill-view.js';
 import { summariseKeymap } from './layout-summary.js';
-
-/**
- * Finds an element and checks it is the kind expected.
- *
- * A missing or wrong-typed element means the markup and this module have drifted
- * apart. Failing loudly at startup beats a listener that silently never fires,
- * or a file input that turns out to be a div.
- */
-function required<T extends Element>(
-  selector: string,
-  kind: abstract new (...args: never[]) => T,
-  within: ParentNode = document,
-): T {
-  const found = within.querySelector(selector);
-  if (found === null) {
-    throw new Error(`Expected an element matching "${selector}"`);
-  }
-  if (!(found instanceof kind)) {
-    throw new TypeError(
-      `Expected "${selector}" to be a ${kind.name}, found a ${found.tagName.toLowerCase()}`,
-    );
-  }
-  return found;
-}
-
-function describeFailure(cause: unknown): string {
-  if (cause instanceof Error) return cause.message;
-  return 'Something went wrong reading that file.';
-}
 
 export function wireUp(root: ParentNode = document): void {
   const input = required('#layout-file', HTMLInputElement, root);
@@ -56,43 +34,76 @@ export function wireUp(root: ParentNode = document): void {
   const nextKey = required('#board-next', HTMLElement, root);
   const legend = required('#board-legend', HTMLElement, root);
   const keyList = required('#board-key-list', HTMLElement, root);
+  const drillSection = required('#drill-section', HTMLElement, root);
+
+  /** The board's state, so a highlight change does not need the keymap again. */
+  let labels: ReadonlyMap<number, string> = new Map<number, string>();
+  let restingHighlight = GLOVE80.spacePosition;
+  let drillView: DrillView | null = null;
 
   function showError(message: string): void {
     error.textContent = message;
     error.hidden = false;
     summary.hidden = true;
     board.hidden = true;
+    drillSection.hidden = true;
     status.textContent = '';
   }
 
   /**
-   * Draws the board, and states in text everything the drawing shows.
-   *
-   * The diagram is `aria-hidden`, so this is not decoration: the readout names the
-   * highlighted key, the legend names each finger in words, and the list names
-   * every cap's hand, finger and row. If the drawing were removed the page would
-   * lose nothing but the picture.
+   * Draws the board with one key highlighted, and says in words which key that
+   * is. The diagram is `aria-hidden`, so this sentence is not a caption: it is
+   * the only place that fact exists for anyone not looking at the picture.
    */
-  function showBoard(keymap: Keymap): void {
-    const labels = new Map(keymap.positionToChar);
-
-    // There is no drill yet, so the diagram points at E. Where E sits is the most
-    // telling thing about a layout, which is why the summary above names it too.
-    // A layout with no E falls back to the space the trainer will teach.
-    const highlight = keymap.charToPosition.get('e') ?? GLOVE80.spacePosition;
-    const key = indexKeys(GLOVE80).get(highlight);
+  function highlight(position: number, lead: string): void {
+    const key = indexKeys(GLOVE80).get(position);
     if (key === undefined) {
       // Prefer throwing to drawing a diagram that points at nothing.
-      throw new Error(
-        `Cannot highlight position ${highlight}: ${GLOVE80.name} does not define it.`,
-      );
+      throw new Error(`Cannot highlight position ${position}: ${GLOVE80.name} does not define it.`);
     }
+    nextKey.textContent = `${lead}: ${nameLabel(labels.get(position), position)} — ${describeKey(key)}.`;
+    figure.replaceChildren(renderBoard(GLOVE80, { labels, highlight: position }));
+  }
 
-    nextKey.textContent = `Highlighted on the diagram: ${nameLabel(labels.get(highlight), highlight)} — ${describeKey(key)}.`;
-    figure.replaceChildren(renderBoard(GLOVE80, { labels, highlight }));
+  function showBoard(keymap: Keymap): void {
+    labels = new Map(keymap.positionToChar);
+
+    // Where E sits is the most telling thing about a layout, which is why the
+    // summary above names it too. A layout with no E falls back to the space the
+    // trainer will teach.
+    restingHighlight = keymap.charToPosition.get('e') ?? GLOVE80.spacePosition;
+    highlight(restingHighlight, 'Highlighted on the diagram');
+
     legend.replaceChildren(...fingersOnBoard(GLOVE80).map(legendItem));
     keyList.replaceChildren(...describeBoardKeys(GLOVE80, labels).map(keyListItem));
     board.hidden = false;
+  }
+
+  /**
+   * Builds the drill surface for this layout.
+   *
+   * The text is a parameter, not a decision made here: generated text arrives
+   * from issue #3 through `SAMPLE_DRILL_TEXT`'s seam, and the ladder will choose
+   * the lesson name. Nothing else about this call changes when they land.
+   */
+  function showDrill(keymap: Keymap): void {
+    drillView?.destroy();
+    drillView = createDrillView({
+      board: GLOVE80,
+      keymap,
+      text: SAMPLE_DRILL_TEXT,
+      lessonName: 'the sample drill',
+      nextLessonName: null,
+      root,
+      onNextKey: (next): void => {
+        if (next === null) {
+          highlight(restingHighlight, 'Highlighted on the diagram');
+          return;
+        }
+        highlight(next.position, 'Highlighted on the diagram, the next key');
+      },
+    });
+    drillSection.hidden = false;
   }
 
   function clearError(): void {
@@ -124,10 +135,13 @@ export function wireUp(root: ParentNode = document): void {
         render(list, summariseKeymap(keymap, GLOVE80));
         summary.hidden = false;
         showBoard(keymap);
+        showDrill(keymap);
         status.textContent = `Loaded ${keymap.title}.`;
       } catch (cause) {
         // Surfaced, never swallowed: a parse failure is the user's problem to
-        // fix and they can only fix what they can see.
+        // fix and they can only fix what they can see. A drill text this layout
+        // cannot type arrives here too, which is why it throws rather than
+        // quietly dropping the characters.
         showError(describeFailure(cause));
       }
     })();
@@ -147,7 +161,7 @@ function nameLabel(label: string | undefined, position: number): string {
 /** A finger named in words, with its colour alongside rather than instead. */
 function legendItem(finger: string): HTMLLIElement {
   const item = document.createElement('li');
-  item.dataset.finger = finger;
+  item.dataset['finger'] = finger;
 
   const swatch = document.createElement('span');
   swatch.className = 'board-legend-swatch';

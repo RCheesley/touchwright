@@ -1,9 +1,10 @@
 /**
  * Entry point.
  *
- * Currently a vertical slice: choose a layout export, see what the parser made of
- * it. The board render, the ladder and the drill come next; this exists so that
- * the parse path is exercised by the end-to-end suite from the start.
+ * A vertical slice, end to end: choose a layout export, see what the parser made
+ * of it, see where those keys are, and type a drill on them. The ladder and
+ * generated drill text come next, and both arrive through seams the drill surface
+ * already has, so this file does not change when they land.
  */
 
 import './ui/theme.css';
