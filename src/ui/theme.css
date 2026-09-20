@@ -22,6 +22,24 @@
   --space: 1rem;
   --radius: 0.375rem;
   --measure: 38rem;
+
+  /*
+   * The board diagram. Finger colours clear the non-text threshold of 3:1
+   * against --board-plate, and cap labels clear AA against --board-cap, in both
+   * themes. tests/e2e/board.spec.ts measures the computed values rather than
+   * trusting this comment.
+   */
+  --board-plate: #dedee1;
+  --board-cap: #fafafb;
+  --board-cap-ink: #1a1a1a;
+  --board-cap-next: #0b5cab;
+  --board-cap-next-ink: #fff;
+  --board-edge: #84848a;
+  --finger-pinky: #6a4b9c;
+  --finger-ring: #1f6390;
+  --finger-middle: #0f6a6a;
+  --finger-index: #8a5310;
+  --finger-thumb: #a8322c;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -35,6 +53,19 @@
     --border: #3f3f43;
     --focus: #7fb4f5;
     --danger: #f2a0a4;
+
+    /* Same thresholds, re-measured for a dark plate. */
+    --board-plate: #17171a;
+    --board-cap: #313138;
+    --board-cap-ink: #f2f2f2;
+    --board-cap-next: #7fb4f5;
+    --board-cap-next-ink: #10243a;
+    --board-edge: #8a8a92;
+    --finger-pinky: #b6a4e8;
+    --finger-ring: #7fb6e8;
+    --finger-middle: #4fc0bd;
+    --finger-index: #e0a752;
+    --finger-thumb: #f0897f;
   }
 }
 
@@ -145,6 +176,145 @@ dd {
   margin: 0;
 }
 
+/*
+ * The board diagram.
+ *
+ * The SVG is aria-hidden, so nothing may be available only here: the legend names
+ * each finger in words, the readout above the board names the highlighted key in
+ * words, and the disclosure below it lists every cap's hand, finger and row. The
+ * colours reinforce those words, they never replace them.
+ *
+ * Each key group and each legend item carries data-finger, and these five rules
+ * are the only place a finger is turned into a colour. Nothing in the renderer
+ * knows a colour, and nothing here knows a keyboard.
+ */
+
+.board-key[data-finger='pinky'],
+.board-legend [data-finger='pinky'] {
+  --finger: var(--finger-pinky);
+}
+
+.board-key[data-finger='ring'],
+.board-legend [data-finger='ring'] {
+  --finger: var(--finger-ring);
+}
+
+.board-key[data-finger='middle'],
+.board-legend [data-finger='middle'] {
+  --finger: var(--finger-middle);
+}
+
+.board-key[data-finger='index'],
+.board-legend [data-finger='index'] {
+  --finger: var(--finger-index);
+}
+
+.board-key[data-finger='thumb'],
+.board-legend [data-finger='thumb'] {
+  --finger: var(--finger-thumb);
+}
+
+/* Scales with its container: a fixed width would break reflow at 320 pixels. */
+.board {
+  display: block;
+  width: 100%;
+  height: auto;
+  max-width: 100%;
+  margin-block: 0.5rem;
+  border-radius: var(--radius);
+}
+
+.board-plate {
+  fill: var(--board-plate);
+}
+
+.board-cap {
+  fill: var(--board-cap);
+  stroke: var(--finger, var(--board-edge));
+  transition: fill 120ms ease-out;
+}
+
+.board-label {
+  fill: var(--board-cap-ink);
+  font-family: ui-monospace, monospace;
+}
+
+.board-nub {
+  fill: none;
+  stroke: var(--board-edge);
+}
+
+.board-halo {
+  fill: none;
+  stroke: var(--board-cap-next);
+}
+
+.board-key-next .board-cap {
+  fill: var(--board-cap-next);
+}
+
+.board-key-next .board-label {
+  fill: var(--board-cap-next-ink);
+}
+
+.board-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.375rem 0.5rem;
+  padding: 0;
+  margin-block: 0.5rem;
+  font-size: 0.875rem;
+  list-style: none;
+}
+
+.board-legend li {
+  display: inline-flex;
+  gap: 0.375rem;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius);
+  color: var(--ink);
+  background: var(--board-plate);
+}
+
+.board-legend-swatch {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: 0.25rem;
+  background: var(--finger, var(--board-edge));
+}
+
+.board-key-detail summary {
+  min-height: 1.5rem;
+  padding-block: 0.25rem;
+  cursor: pointer;
+}
+
+.board-key-list {
+  padding: 0;
+  margin-block: 0.5rem 0;
+  font-size: 0.875rem;
+  list-style: none;
+  columns: 15rem;
+}
+
+.board-key-list li {
+  break-inside: avoid;
+  padding-block: 0.125rem;
+}
+
+.board-key-list-cap {
+  display: inline-block;
+  min-width: 1.5rem;
+  padding-inline: 0.25rem;
+  border: 1px solid var(--board-edge);
+  border-radius: 0.25rem;
+  color: var(--board-cap-ink);
+  font-family: ui-monospace, monospace;
+  text-align: center;
+  background: var(--board-cap);
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -152,5 +322,10 @@ dd {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+
+  /* Stated for the board as well: the highlight must land at once, not fade in. */
+  .board-cap {
+    transition: none;
   }
 }
