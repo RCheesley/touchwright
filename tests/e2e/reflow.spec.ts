@@ -11,7 +11,7 @@ const WIDTHS = [320, 600, 1280];
 for (const width of WIDTHS) {
   test(`does not scroll horizontally at ${width} CSS pixels`, async ({ page }) => {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto('/');
+    await page.goto('./');
     await loadReferenceLayout(page);
 
     const overflow = await page.evaluate(
@@ -23,7 +23,7 @@ for (const width of WIDTHS) {
 
 test('keeps a readable side gutter at 320 CSS pixels', async ({ page }) => {
   await page.setViewportSize({ width: 320, height: 800 });
-  await page.goto('/');
+  await page.goto('./');
   const box = await page.getByRole('heading', { level: 1 }).boundingBox();
   expect(box?.x ?? 0).toBeGreaterThanOrEqual(8);
 });

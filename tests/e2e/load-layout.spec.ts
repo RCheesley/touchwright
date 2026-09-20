@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { expectNoAxeViolations, loadReferenceLayout, REFERENCE_LAYOUT_PATH } from './helpers.js';
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
 });
 
 test('reaches a usable page with no console errors', async ({ page }) => {

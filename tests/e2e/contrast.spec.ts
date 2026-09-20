@@ -37,13 +37,13 @@ async function measure(
 }
 
 test('body text meets AA against its background', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
   const { foreground, background, ratio } = await measure(page, 'body');
   expect(ratio, `body text ${foreground} on ${background}`).toBeGreaterThanOrEqual(AA_TEXT);
 });
 
 test('the tagline and colophon meet AA despite being muted', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
   for (const selector of ['.tagline', '.colophon p']) {
     const { foreground, background, ratio } = await measure(page, selector);
     expect(ratio, `${selector}: ${foreground} on ${background}`).toBeGreaterThanOrEqual(AA_TEXT);
@@ -53,7 +53,7 @@ test('the tagline and colophon meet AA despite being muted', async ({ page }) =>
 test('the error message meets AA, because it is the one thing that must be read', async ({
   page,
 }) => {
-  await page.goto('/');
+  await page.goto('./');
   await page.setInputFiles('#layout-file', {
     name: 'broken.json',
     mimeType: 'application/json',
@@ -66,14 +66,14 @@ test('the error message meets AA, because it is the one thing that must be read'
 });
 
 test('the summary terms meet AA after a layout loads', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
   await loadReferenceLayout(page);
   const { foreground, background, ratio } = await measure(page, '#summary-list dt');
   expect(ratio, `summary term ${foreground} on ${background}`).toBeGreaterThanOrEqual(AA_TEXT);
 });
 
 test('the focus ring meets the non-text threshold against its surroundings', async ({ page }) => {
-  await page.goto('/');
+  await page.goto('./');
   const input = page.locator('#layout-file');
   await input.focus();
 
@@ -86,7 +86,7 @@ test('the focus ring meets the non-text threshold against its surroundings', asy
 
 test('no foreground ever matches its own background', async ({ page }) => {
   // The shape of the original bug, stated directly.
-  await page.goto('/');
+  await page.goto('./');
   await loadReferenceLayout(page);
 
   for (const selector of [

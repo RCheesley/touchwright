@@ -1,5 +1,9 @@
 # Touchwright
 
+[![CI](https://github.com/RCheesley/touchwright/actions/workflows/ci.yml/badge.svg)](https://github.com/RCheesley/touchwright/actions/workflows/ci.yml)
+
+**[Try it](https://rcheesley.github.io/touchwright/)**
+
 A typing trainer that reads your keyboard's firmware keymap and builds the lesson
 ladder around it.
 
@@ -53,6 +57,17 @@ The end-to-end suite needs browsers once:
 ```bash
 npx playwright install chromium
 ```
+
+It can also be pointed at a deployed site, to check that what is published
+actually works rather than only what builds locally:
+
+```bash
+E2E_BASE_URL=https://rcheesley.github.io/touchwright/ npx playwright test
+```
+
+Navigation in those tests is relative, so the suite exercises the real base path.
+An absolute `/` would resolve against the origin and quietly test the wrong
+site — which is exactly what happened the first time.
 
 ## How it is put together
 
@@ -125,13 +140,17 @@ The build is a plain static bundle: no server, no runtime network calls, offline
 capable. That makes the host interchangeable, and only the last step of
 `.github/workflows/deploy.yml` is host-specific.
 
-GitHub Pages cannot publish from a private repository without a paid plan, so
-deployment sits behind a switch. To turn it on, set the repository variable
-`PAGES_ENABLED` to `true` and set Pages to build from GitHub Actions. Until then CI
-keeps the built site as a downloadable artifact on every run.
+Published to GitHub Pages at <https://rcheesley.github.io/touchwright/>.
+
+Deployment runs only after CI has gone green for a commit, and it deploys that
+same commit, so nothing reaches the site without its tests having passed. It is
+also behind a `PAGES_ENABLED` repository variable: GitHub Pages cannot publish
+from a private repository without a paid plan, so the switch exists for any
+period when this repository is private. With it off, CI still keeps the built
+site as a downloadable artifact on every run.
 
 `VITE_BASE` controls the base path, so moving to Cloudflare Pages or any other
-static host means changing one step and one environment variable.
+static host means changing the last three steps of one workflow.
 
 ## Contributing
 
