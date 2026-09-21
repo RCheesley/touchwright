@@ -41,7 +41,7 @@ import {
   type DrillSession,
   type Mark,
 } from '../drill/index.js';
-import { scoreDrill, type DrillMode, type DrillScore, type StarCount } from '../drill/scoring.js';
+import { scoreDrill, type DrillMode, type DrillScore } from '../drill/scoring.js';
 import type { Keymap } from '../keymap/types.js';
 import { keyStatId } from '../stats/storage.js';
 import { required } from './dom.js';
@@ -105,6 +105,12 @@ export interface DrillViewOptions {
   readonly session?: DrillSession;
   /** Only a lesson awards stars, which is scoring's rule, not this module's. */
   readonly mode?: DrillMode;
+  /**
+   * The ladder id of the lesson this drill belongs to. Stars are written to
+   * progress under it, so a drill with no id earns experience but no stars: the
+   * ladder has nowhere to put them.
+   */
+  readonly lessonId?: string | null;
   readonly lessonName?: string | null;
   /** The lesson two stars unlocks. Null until the ladder exists. */
   readonly nextLessonName?: string | null;
@@ -114,7 +120,24 @@ export interface DrillViewOptions {
    * caller's business and this module never draws a keyboard.
    */
   readonly onNextKey?: (next: NextKeyFacts | null) => void;
+  /**
+   * Called once a finished drill has been scored and written to progress, so the
+   * caller can persist it and refresh the views around the drill. It is never
+   * called for an unfinished drill.
+   */
+  readonly onScored?: (scored: ScoredDrill) => void;
   readonly root?: ParentNode;
+}
+
+/** What one finished drill did to progress. */
+export interface ScoredDrill {
+  readonly score: DrillScore;
+  readonly mode: DrillMode;
+  readonly lessonId: string | null;
+  /** True when this drill beat the stars already recorded for the lesson. */
+  readonly starsImproved: boolean;
+  /** Best stars for this lesson after the drill, or null when there is no lesson. */
+  readonly bestStars: number | null;
 }
 
 export type CaptureRelease = 'escape' | 'focus-left' | 'teardown';
@@ -217,7 +240,9 @@ export function nameCharacter(character: string): string {
   return `“${character}”`;
 }
 
-function starWords(stars: StarCount): string {
+/** A star count in words, which is the fact; any glyphs elsewhere are decoration. */
+function starWords(stars: number): string {
+  if (stars <= 0) return 'no stars of 3';
   return stars === 1 ? '1 star of 3' : `${stars} stars of 3`;
 }
 
@@ -270,6 +295,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
 
   const boardKeys = indexKeys(options.board);
   const mode: DrillMode = options.mode ?? 'lesson';
+  const lessonId = options.lessonId ?? null;
   const lessonName = options.lessonName ?? null;
   const nextLessonName = options.nextLessonName ?? null;
   const limitMs = options.limitMs ?? NO_LIMIT;
@@ -410,6 +436,51 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     if (drill !== null && !drill.isFinished) announceWord(drill);
   }
 
+  /**
+   * Write what the drill earned into live progress.
+   *
+   * The stars a learner earns are the whole point of the ladder, and until this
+   * existed they were computed, shown once, and thrown away. Experience is added
+   * for every mode, because a sprint and a repair drill are still practice; stars
+   * are only ever written for a lesson with an id, which is scoring's rule about
+   * modes and the ladder's rule about ids, not this module's.
+   *
+   * Best-of, never last-of: a bad run on a lesson already passed must not take a
+   * rung away. Nothing here catches anything, deliberately — progress arriving
+   * frozen from an external store has to throw loudly rather than silently drop
+   * the write, which is the whole of regression 1.
+   */
+  function recordScore(score: DrillScore): ScoredDrill {
+    const progress = session.progress;
+    let starsImproved = false;
+    let bestStars: number | null = null;
+
+    if (mode === 'lesson' && lessonId !== null) {
+      const previous = progress.stars[lessonId] ?? 0;
+      bestStars = Math.max(previous, score.stars);
+      starsImproved = bestStars > previous;
+      progress.stars[lessonId] = bestStars;
+    }
+
+    progress.xp += score.experienceGained;
+
+    const scored: ScoredDrill = {
+      score,
+      mode,
+      lessonId,
+      starsImproved,
+      bestStars,
+    };
+    options.onScored?.(scored);
+    return scored;
+  }
+
+  /** Only shown when a lesson's best differs from the run just finished. */
+  function bestStarsRow(scored: ScoredDrill): readonly [string, string][] {
+    if (scored.bestStars === null || scored.bestStars === scored.score.stars) return [];
+    return [['Best on this lesson', starWords(scored.bestStars)]];
+  }
+
   function showResult(current: Drill, result: DrillResult): void {
     const score: DrillScore = scoreDrill({
       mode,
@@ -423,6 +494,10 @@ export function createDrillView(options: DrillViewOptions): DrillView {
       nextLessonName,
     });
 
+    // Written before anything is rendered, so the result card and the ladder
+    // beneath it are looking at the same numbers.
+    const recorded = recordScore(score);
+
     const rows: readonly [string, string][] = [
       ['Speed', `${score.wordsPerMinute} words per minute`],
       [
@@ -432,6 +507,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
       ['Stars', mode === 'lesson' ? starWords(score.stars) : 'none, this was not a lesson'],
       ['Experience', `${score.experienceGained} XP`],
       ['Ended', result.completed ? 'you typed it through' : 'the time limit ran out'],
+      ...bestStarsRow(recorded),
     ];
 
     el.resultDetail.replaceChildren(

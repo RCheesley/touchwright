@@ -111,6 +111,80 @@
           </p>
         </div>
       </section>
+
+      <!--
+        The ladder.
+
+        It comes after the drill deliberately, so that the first few tab stops on
+        the page still reach the drill controls: the lesson buttons would otherwise
+        sit between the file input and "Start drill".
+
+        Stars are stated in words on every rung and the shape above them is
+        aria-hidden, because a row of glyphs is decoration and the count is the
+        fact. Locked rungs say what unlocks them rather than only looking dimmer.
+      -->
+      <section id="ladder-section" aria-labelledby="ladder-heading" hidden>
+        <h2 id="ladder-heading">The ladder</h2>
+        <p id="ladder-intro">
+          Built from your own layout. Two stars on a lesson unlocks the next one, and every lesson
+          you have reached stays open, so you can always drop back to an earlier one.
+        </p>
+        <p id="ladder-current" class="ladder-current" role="status" aria-live="polite"></p>
+        <ol id="ladder-list" class="ladder"></ol>
+      </section>
+
+      <!--
+        Statistics, grouped by finger and row.
+
+        The grouping is the point: a list of missed characters is trivia, and the
+        same numbers gathered under the finger that presses them and the row it
+        reaches for are a diagnosis. Every band is named in words; the tint and the
+        bar beside it are reinforcement and are aria-hidden.
+      -->
+      <section id="stats-section" aria-labelledby="stats-heading" hidden>
+        <h2 id="stats-heading">Where your fingers slip</h2>
+        <p id="stats-summary" class="stats-summary"></p>
+        <dl id="stats-totals"></dl>
+        <h3 id="stats-weak-heading">By finger and row</h3>
+        <p id="stats-weak-intro">
+          Worst first. Each finger is broken down by the row it was reaching for.
+        </p>
+        <div id="stats-weak"></div>
+        <p id="stats-unplaced" class="drill-hint" hidden></p>
+      </section>
+
+      <!--
+        Export and import.
+
+        Progress is saved in this browser as you go, and the file here is how it
+        leaves: a learner should never have their practice trapped in one browser
+        or lost with a cleared cache. An import that is partly unreadable says what
+        it dropped rather than refusing the whole file.
+      -->
+      <section id="progress-section" aria-labelledby="progress-heading" hidden>
+        <h2 id="progress-heading">Keep your progress</h2>
+        <p id="progress-where"></p>
+        <p class="drill-controls">
+          <button id="progress-export" type="button" class="button button-outline">
+            Export progress
+          </button>
+          <button id="progress-clear" type="button" class="button button-outline">
+            Clear saved progress
+          </button>
+        </p>
+        <p>
+          <label class="field">
+            <span>Import a progress file (JSON)</span>
+            <input id="progress-import" type="file" accept="application/json,.json" />
+          </label>
+        </p>
+        <p id="progress-status" role="status" aria-live="polite"></p>
+        <div id="progress-report" class="progress-report" hidden>
+          <p id="progress-report-intro"></p>
+          <ul id="progress-report-list"></ul>
+        </div>
+        <div id="progress-error" role="alert" hidden></div>
+      </section>
     </main>
 
     <footer class="colophon">

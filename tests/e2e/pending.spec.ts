@@ -1,3 +1,6 @@
+import { mkdtempSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import { SAMPLE_DRILL_TEXT } from '../../src/ui/drill-view.js';
 import { loadReferenceLayout, REFERENCE_LAYOUT_PATH } from './helpers.js';
@@ -15,6 +18,20 @@ async function tabUntil(page: Page, id: string, limit = 8): Promise<readonly str
     stops.push(await page.evaluate(() => document.activeElement?.id ?? 'unnamed'));
   }
   return stops;
+}
+
+/** The rungs of the generated ladder, in order. */
+function rungs(page: Page) {
+  return page.locator('#ladder-list .ladder-rung');
+}
+
+/** Type the whole drill through cleanly, at a pace worth three stars. */
+async function earnThreeStars(page: Page): Promise<void> {
+  await page.getByRole('button', { name: 'Start drill' }).click();
+  // A delay, so the drill has a measurable pace rather than an unmeasurable one.
+  await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+  await expect(page.locator('#drill-result')).toBeVisible();
+  await expect(rungs(page).first()).toContainText('3 stars of 3');
 }
 
 /**
@@ -57,9 +74,57 @@ test.describe('the trainer journeys', () => {
 
   test.fixme('runs a sprint to its limit, and offers an untimed option', () => {});
 
-  test.fixme('keeps progress across a reload', () => {});
+  test('keeps progress across a reload', async ({ page }) => {
+    await page.goto('./');
+    await loadReferenceLayout(page);
+    await earnThreeStars(page);
 
-  test.fixme('exports progress, clears storage, and imports it back', () => {});
+    await page.reload();
+
+    // The layout is a file on the learner's own disk, so it is chosen again. The
+    // progress is not chosen again: it is simply still there.
+    await loadReferenceLayout(page);
+
+    await expect(rungs(page).first()).toContainText('3 stars of 3');
+    await expect(rungs(page).nth(1)).not.toHaveAttribute('data-state', 'locked');
+    await expect(page.locator('#stats-summary')).not.toContainText('Nothing recorded yet');
+    // The per-key statistics came back too, grouped by finger and row.
+    await expect(page.locator('#stats-weak')).toContainText('finger');
+  });
+
+  test('exports progress, clears storage, and imports it back', async ({ page }) => {
+    await page.goto('./');
+    await loadReferenceLayout(page);
+    await earnThreeStars(page);
+
+    const downloading = page.waitForEvent('download');
+    await page.getByRole('button', { name: 'Export progress' }).click();
+    const download = await downloading;
+    expect(download.suggestedFilename()).toMatch(/^touchwright-progress-\d{4}-\d{2}-\d{2}\.json$/);
+
+    const saved = join(mkdtempSync(join(tmpdir(), 'touchwright-e2e-')), 'progress.json');
+    await download.saveAs(saved);
+
+    // Clearing takes two deliberate goes, because it cannot be undone.
+    await page.getByRole('button', { name: 'Clear saved progress' }).click();
+    await page.getByRole('button', { name: 'Really clear saved progress' }).click();
+    await page.reload();
+    await loadReferenceLayout(page);
+    await expect(rungs(page).first()).toContainText('no stars yet');
+    await expect(rungs(page).nth(1)).toHaveAttribute('data-state', 'locked');
+
+    await page.locator('#progress-import').setInputFiles(saved);
+
+    await expect(page.locator('#progress-status')).toContainText('Imported progress.json');
+    await expect(rungs(page).first()).toContainText('3 stars of 3');
+    await expect(rungs(page).nth(1)).not.toHaveAttribute('data-state', 'locked');
+    await expect(page.locator('#progress-error')).toBeHidden();
+
+    // And the import was saved as well as applied, so it survives the next reload.
+    await page.reload();
+    await loadReferenceLayout(page);
+    await expect(rungs(page).first()).toContainText('3 stars of 3');
+  });
 
   test('completes a drill without ever touching the mouse', async ({ page }) => {
     await page.goto('./');

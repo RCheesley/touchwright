@@ -11,8 +11,16 @@
  */
 
 import { describeKey, GLOVE80, indexKeys } from '../board/index.js';
+import { createDrillSession, type DrillSession } from '../drill/index.js';
+import { generateLadder, type Lesson } from '../ladder/index.js';
 import { parseMoErgoLayoutText } from '../keymap/moergo.js';
 import type { Keymap } from '../keymap/types.js';
+import {
+  LocalStorageDriver,
+  MemoryStorageDriver,
+  ProgressStore,
+  type StorageDriver,
+} from '../stats/storage.js';
 import {
   describeBoardKeys,
   fingersOnBoard,
@@ -22,8 +30,48 @@ import {
 import { describeFailure, required } from './dom.js';
 import { createDrillView, SAMPLE_DRILL_TEXT, type DrillView } from './drill-view.js';
 import { summariseKeymap } from './layout-summary.js';
+import { createProgressView, type ProgressView } from './progress-view.js';
 
-export function wireUp(root: ParentNode = document): void {
+/**
+ * Where saved progress lives, and what to tell the learner about it.
+ *
+ * localStorage throws rather than returning null in a private window, so it is
+ * probed rather than assumed. When it is unavailable the trainer still works: the
+ * in-memory driver keeps the session together and the wording says plainly that
+ * progress will not outlive the tab, so exporting is the way to keep it.
+ */
+export interface ChosenStorage {
+  readonly driver: StorageDriver;
+  readonly description: string;
+  readonly persistent: boolean;
+}
+
+export function chooseStorage(scope: { localStorage?: Storage } = globalThis): ChosenStorage {
+  if (LocalStorageDriver.available(scope) && scope.localStorage !== undefined) {
+    return {
+      driver: new LocalStorageDriver(scope.localStorage),
+      description:
+        'Your progress is saved in this browser as you practise, so it is still here after a reload. The file below is how it leaves this browser.',
+      persistent: true,
+    };
+  }
+  return {
+    driver: new MemoryStorageDriver(),
+    description:
+      'This browser will not let the trainer save anything, so your progress lasts only until you close the tab. Export it if you want to keep it.',
+    persistent: false,
+  };
+}
+
+export interface WireUpOptions {
+  /** Injected so a test can drive a store it owns, and watch what is written. */
+  readonly storage?: ChosenStorage;
+  readonly session?: DrillSession;
+  /** Injected so a test can observe an export without a browser download. */
+  readonly download?: (fileName: string, json: string) => void;
+}
+
+export function wireUp(root: ParentNode = document, options: WireUpOptions = {}): void {
   const input = required('#layout-file', HTMLInputElement, root);
   const status = required('#layout-status', HTMLElement, root);
   const error = required('#layout-error', HTMLElement, root);
@@ -35,11 +83,32 @@ export function wireUp(root: ParentNode = document): void {
   const legend = required('#board-legend', HTMLElement, root);
   const keyList = required('#board-key-list', HTMLElement, root);
   const drillSection = required('#drill-section', HTMLElement, root);
+  const ladderSection = required('#ladder-section', HTMLElement, root);
+  const statsSection = required('#stats-section', HTMLElement, root);
+  const progressSection = required('#progress-section', HTMLElement, root);
+  const drillStart = required('#drill-start', HTMLButtonElement, root);
 
   /** The board's state, so a highlight change does not need the keymap again. */
   let labels: ReadonlyMap<number, string> = new Map<number, string>();
   let restingHighlight = GLOVE80.spacePosition;
   let drillView: DrillView | null = null;
+  let progressView: ProgressView | null = null;
+
+  /**
+   * Storage, the session and the saved progress are set up once, here, before a
+   * layout is chosen.
+   *
+   * The order matters and is the whole of regression 2: the load has to reach the
+   * session before the first keystroke, and it has to go through `ProgressStore`,
+   * which thaws and validates, so that nothing frozen from an external store can
+   * become live state. The session then decides what an arriving load may touch.
+   */
+  const storage = options.storage ?? chooseStorage();
+  const store = new ProgressStore(storage.driver);
+  const session = options.session ?? createDrillSession();
+  const startupLoad = store.load();
+  const startupApplied = session.applyLoadedProgress(startupLoad.progress);
+  const startupWarnings = [...startupLoad.warnings, ...startupApplied.warnings];
 
   function showError(message: string): void {
     error.textContent = message;
@@ -47,6 +116,9 @@ export function wireUp(root: ParentNode = document): void {
     summary.hidden = true;
     board.hidden = true;
     drillSection.hidden = true;
+    ladderSection.hidden = true;
+    statsSection.hidden = true;
+    progressSection.hidden = true;
     status.textContent = '';
   }
 
@@ -80,19 +152,29 @@ export function wireUp(root: ParentNode = document): void {
   }
 
   /**
-   * Builds the drill surface for this layout.
+   * Builds the drill surface for one lesson of the ladder.
    *
-   * The text is a parameter, not a decision made here: generated text arrives
-   * from issue #3 through `SAMPLE_DRILL_TEXT`'s seam, and the ladder will choose
-   * the lesson name. Nothing else about this call changes when they land.
+   * ---------------------------------------------------------------------------
+   * SEAM FOR ISSUE #3, drill text generation.
+   *
+   * The lesson is chosen here and its id, name and key set are already in hand;
+   * only the text is still the sample. When #3 lands, `text:` becomes a call to
+   * the generator with `lesson.keys` and `lesson.stage`, and nothing else in this
+   * function or in `drill-view.ts` changes. `nextLessonName` stays null until then
+   * on purpose: the result card would otherwise offer "Start <the next lesson>" on
+   * a button that could only restart the same sample text, and a button that lies
+   * is worse than one rung of the ladder being reached from the ladder itself.
+   * ---------------------------------------------------------------------------
    */
-  function showDrill(keymap: Keymap): void {
+  function showDrill(keymap: Keymap, lesson: Lesson | null): void {
     drillView?.destroy();
     drillView = createDrillView({
       board: GLOVE80,
       keymap,
       text: SAMPLE_DRILL_TEXT,
-      lessonName: 'the sample drill',
+      session,
+      lessonId: lesson?.id ?? null,
+      lessonName: lesson?.name ?? 'the sample drill',
       nextLessonName: null,
       root,
       onNextKey: (next): void => {
@@ -102,8 +184,49 @@ export function wireUp(root: ParentNode = document): void {
         }
         highlight(next.position, 'Highlighted on the diagram, the next key');
       },
+      onScored: (): void => {
+        // The stars and the experience are already in live progress by now. This
+        // is where they are written down and where the ladder learns about them.
+        progressView?.save();
+        progressView?.refresh();
+      },
     });
     drillSection.hidden = false;
+  }
+
+  /**
+   * Builds the ladder, the statistics and the export and import controls.
+   *
+   * The ladder is generated from the layout in front of the learner, which is the
+   * thing this project is named for, so it cannot exist before a layout is chosen.
+   */
+  function showProgress(keymap: Keymap): void {
+    progressView?.destroy();
+    const lessons = generateLadder(keymap, GLOVE80);
+
+    progressView = createProgressView({
+      board: GLOVE80,
+      keymap,
+      lessons,
+      session,
+      store,
+      root,
+      startupWarnings,
+      storageDescription: storage.description,
+      ...(options.download === undefined ? {} : { download: options.download }),
+      onChooseLesson: ({ lesson }): void => {
+        // Returning to an earlier lesson rebuilds the drill for it. Focus lands on
+        // the start button, so a keyboard learner is left somewhere they can act
+        // rather than on a button whose meaning has just changed.
+        showDrill(keymap, lesson);
+        drillStart.focus();
+      },
+    });
+
+    // The lesson the learner left off on, clamped to a ladder this layout can
+    // actually produce: an imported file may have come from a longer one.
+    const current = lessons[Math.min(Math.max(0, session.progress.lesson), lessons.length - 1)];
+    showDrill(keymap, current ?? null);
   }
 
   function clearError(): void {
@@ -135,7 +258,9 @@ export function wireUp(root: ParentNode = document): void {
         render(list, summariseKeymap(keymap, GLOVE80));
         summary.hidden = false;
         showBoard(keymap);
-        showDrill(keymap);
+        // The ladder comes before the drill: it decides which lesson the drill is
+        // for, and a drill with no lesson could not write its stars anywhere.
+        showProgress(keymap);
         status.textContent = `Loaded ${keymap.title}.`;
       } catch (cause) {
         // Surfaced, never swallowed: a parse failure is the user's problem to
