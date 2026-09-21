@@ -39,7 +39,14 @@ export default tseslint.config(
   {
     // The drill engine must stay free of the DOM. That is what makes the
     // functional tests cheap and the regression suite possible.
-    files: ['src/drill/engine.ts', 'src/ladder/**/*.ts', 'src/board/**/*.ts', 'src/keymap/**/*.ts'],
+    files: [
+      // The whole drill layer, not just the engine: text generation, scoring and
+      // limits are equally pure, and naming one file let the rule miss the rest.
+      'src/drill/**/*.ts',
+      'src/ladder/**/*.ts',
+      'src/board/**/*.ts',
+      'src/keymap/**/*.ts',
+    ],
     rules: {
       'no-restricted-globals': [
         'error',
