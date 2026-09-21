@@ -18,7 +18,6 @@ import {
   ProgressStore,
   type StorageDriver,
 } from '../../src/stats/storage.js';
-import { SAMPLE_DRILL_TEXT } from '../../src/ui/drill-view.js';
 import { chooseStorage, wireUp, type ChosenStorage } from '../../src/ui/load-form.js';
 import { readReferenceLayout } from '../fixtures/index.js';
 
@@ -114,8 +113,29 @@ async function start(driver: StorageDriver): Promise<Started> {
 }
 
 /** Type a whole drill, cleanly, at a pace that is worth three stars. */
+/**
+ * The text the drill is actually showing, read back from the surface.
+ *
+ * Deliberately not the sample constant: the drill text is generated from the
+ * lesson now, so a test that assumed one fixed sentence would pass only until
+ * the generator changed. Reading the rendered characters keeps these tests about
+ * what they are really testing, which is that typing a drill cleanly scores it.
+ */
+function renderedDrillText(): string {
+  const surface = document.querySelector('[aria-label="Drill text"]');
+  if (surface === null) throw new Error('No drill surface is on the page');
+  const characters = [...surface.querySelectorAll<HTMLElement>('[data-index]')]
+    .map((element) => ({
+      index: Number.parseInt(element.dataset['index'] ?? '', 10),
+      text: element.textContent,
+    }))
+    .sort((a, b) => a.index - b.index);
+  if (characters.length === 0) throw new Error('The drill surface rendered no characters');
+  return characters.map((character) => character.text).join('');
+}
+
 function typeCleanly(clock: ReturnType<typeof testClock>): void {
-  for (const character of Array.from(SAMPLE_DRILL_TEXT)) {
+  for (const character of Array.from(renderedDrillText())) {
     clock.advance(90);
     document.dispatchEvent(
       new KeyboardEvent('keydown', { key: character, bubbles: true, cancelable: true }),

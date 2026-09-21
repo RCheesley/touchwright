@@ -112,8 +112,15 @@ export interface DrillViewOptions {
    */
   readonly lessonId?: string | null;
   readonly lessonName?: string | null;
-  /** The lesson two stars unlocks. Null until the ladder exists. */
+  /** The lesson two stars unlocks. Null when there is no rung above this one. */
   readonly nextLessonName?: string | null;
+  /**
+   * Called when the learner takes up an offer to move on. Only ever called when
+   * the result actually earned the advance, so the continue button can promise
+   * the next lesson by name without lying: if the caller cannot move on, it does
+   * not pass this, and the button offers another go at this lesson instead.
+   */
+  readonly onAdvance?: () => void;
   /**
    * Called whenever the next key changes, and with null when there is none. The
    * board highlight is wired up through this, so that reinforcement is the
@@ -298,6 +305,9 @@ export function createDrillView(options: DrillViewOptions): DrillView {
   const lessonId = options.lessonId ?? null;
   const lessonName = options.lessonName ?? null;
   const nextLessonName = options.nextLessonName ?? null;
+  const onAdvance = options.onAdvance ?? null;
+  /** Whether the result on screen earned a move to the next lesson. */
+  let advanceEarned = false;
   const limitMs = options.limitMs ?? NO_LIMIT;
   const session =
     options.session ?? createDrillSession(options.now === undefined ? {} : { now: options.now });
@@ -370,6 +380,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     el.resultDetail.replaceChildren();
     el.resultWhy.textContent = '';
     el.continue.textContent = '';
+    advanceEarned = false;
   }
 
   function announce(message: string): void {
@@ -520,7 +531,11 @@ export function createDrillView(options: DrillViewOptions): DrillView {
       }),
     );
     el.resultWhy.textContent = score.nextStep.why;
-    el.continue.textContent = score.nextStep.label;
+    // Only promise the next lesson when there is something wired up to deliver
+    // it. A button that names a rung and then restarts this one is worse than a
+    // plain "go again".
+    advanceEarned = score.nextStep.advances && onAdvance !== null;
+    el.continue.textContent = advanceEarned ? score.nextStep.label : 'Drill this lesson again';
     el.result.hidden = false;
 
     // Unhidden first, then written, so the assertive region announces the result
@@ -690,7 +705,16 @@ export function createDrillView(options: DrillViewOptions): DrillView {
 
   el.start.addEventListener('click', onStartClick);
   el.reset.addEventListener('click', startDrill);
-  el.continue.addEventListener('click', startDrill);
+  function onContinue(): void {
+    if (advanceEarned && onAdvance !== null) {
+      advanceEarned = false;
+      onAdvance();
+      return;
+    }
+    startDrill();
+  }
+
+  el.continue.addEventListener('click', onContinue);
   document.addEventListener('focusin', onFocusIn);
 
   mountText(options.text);
@@ -712,7 +736,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
       release('teardown');
       el.start.removeEventListener('click', onStartClick);
       el.reset.removeEventListener('click', startDrill);
-      el.continue.removeEventListener('click', startDrill);
+      el.continue.removeEventListener('click', onContinue);
       document.removeEventListener('focusin', onFocusIn);
     },
   };

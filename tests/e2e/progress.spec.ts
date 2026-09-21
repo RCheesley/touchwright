@@ -3,8 +3,18 @@ import { readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test, type Download, type Page } from '@playwright/test';
-import { SAMPLE_DRILL_TEXT } from '../../src/ui/drill-view.js';
-import { expectNoAxeViolations, loadReferenceLayout, REFERENCE_LAYOUT_PATH } from './helpers.js';
+import {
+  expectNoAxeViolations,
+  loadReferenceLayout,
+  REFERENCE_LAYOUT_PATH,
+  expectedDrillText,
+  gotoApp,
+  drillPrefix,
+  drillCharAt,
+  expectedKeyFinger,
+  expectedKeyHand,
+  wrongKeyFor,
+} from './helpers.js';
 
 /**
  * The ladder, the statistics, and export and import, in a real browser, in both
@@ -22,7 +32,7 @@ const DATED_EXPORT = /^touchwright-progress-\d{4}-\d{2}-\d{2}\.json$/;
 async function earnThreeStars(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Start drill' }).click();
   // A delay, so the drill has a measurable pace rather than an unmeasurable one.
-  await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+  await page.keyboard.type(expectedDrillText(), { delay: 20 });
   await expect(page.locator('#drill-result')).toBeVisible();
   await expect(page.locator('#drill-result-detail')).toContainText('3 stars of 3');
 }
@@ -40,7 +50,7 @@ async function exportProgress(page: Page): Promise<Download> {
 
 test.describe('the ladder', () => {
   test('shows every lesson, which are unlocked, and the stars earned', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     const rungs = page.locator('#ladder-list .ladder-rung');
@@ -63,7 +73,7 @@ test.describe('the ladder', () => {
   });
 
   test('returns to an earlier lesson from the ladder', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -83,7 +93,7 @@ test.describe('the ladder', () => {
   });
 
   test('keeps every control at least 24 by 24 CSS pixels', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     const small = await page
@@ -100,7 +110,7 @@ test.describe('the ladder', () => {
   });
 
   test('shows a visible focus ring on a ladder button', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     const practise = page.getByRole('button', { name: 'Practise Home keys again' });
@@ -114,26 +124,27 @@ test.describe('the statistics', () => {
   test('groups the keys that slip by finger and row, in words as well as colour', async ({
     page,
   }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await page.getByRole('button', { name: 'Start drill' }).click();
 
-    // Type the drill with one deliberate mistake on a key whose finger and row
-    // are worth naming: k is the right middle finger's lower row, and the drill
-    // starts with "ask".
-    await page.keyboard.type('as', { delay: 20 });
+    // Type the drill, fumbling the third key four times before getting it right.
+    // Which key that is depends on the generated drill, so what it is called and
+    // which finger owns it are both derived rather than assumed -- the point of
+    // the test is that the report names a finger, a row and the key itself.
+    const fumbled = drillCharAt(2);
+    await page.keyboard.type(drillPrefix(2), { delay: 20 });
     for (let attempt = 0; attempt < 4; attempt += 1) {
-      await page.keyboard.press('j');
+      await page.keyboard.press(wrongKeyFor(fumbled));
       await page.keyboard.press('Backspace');
     }
-    await page.keyboard.type(SAMPLE_DRILL_TEXT.slice(2), { delay: 20 });
+    await page.keyboard.type(expectedDrillText().slice(2), { delay: 20 });
     await expect(page.locator('#drill-result')).toBeVisible();
 
     const weak = page.locator('#stats-weak');
-    await expect(weak).toContainText('right middle finger');
-    await expect(weak).toContainText('lower row');
+    await expect(weak).toContainText(`${expectedKeyHand(fumbled)} ${expectedKeyFinger(fumbled)}`);
     await expect(weak).toContainText('presses missed');
-    await expect(weak).toContainText('“k”');
+    await expect(weak).toContainText(`“${fumbled}”`);
 
     // The band is a word, and the bar next to it is decoration with the same
     // number written out beside it.
@@ -144,7 +155,7 @@ test.describe('the statistics', () => {
   });
 
   test('says plainly that nothing has been recorded before anything has', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     await expect(page.locator('#stats-summary')).toContainText('Nothing recorded yet');
@@ -154,7 +165,7 @@ test.describe('the statistics', () => {
 
 test.describe('keeping progress', () => {
   test('downloads an export even when the page is served from a subpath', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -177,7 +188,7 @@ test.describe('keeping progress', () => {
   });
 
   test('imports an exported file into a fresh browser', async ({ page, browser }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -216,7 +227,7 @@ test.describe('keeping progress', () => {
   test('reports what a partly unreadable import dropped, rather than refusing it', async ({
     page,
   }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     await page.locator('#progress-import').setInputFiles({
@@ -250,7 +261,7 @@ test.describe('keeping progress', () => {
   });
 
   test('refuses a file that is not JSON, and keeps the progress it has', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -268,7 +279,7 @@ test.describe('keeping progress', () => {
   });
 
   test('clears saved progress only after a second, deliberate go', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -289,7 +300,7 @@ test.describe('the accessibility of the new views', () => {
   test('is axe clean with the ladder, the statistics and a result on the page', async ({
     page,
   }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await expectNoAxeViolations(page, 'the ladder and statistics before any drill');
 
@@ -299,7 +310,7 @@ test.describe('the accessibility of the new views', () => {
 
   test('animates nothing in these views when reduced motion is asked for', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -324,7 +335,7 @@ test.describe('the accessibility of the new views', () => {
   });
 
   test('drives the ladder and the export controls from the keyboard alone', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     // Choosing the layout file is the one step a test cannot do with keystrokes.
     await page.locator('#layout-file').setInputFiles(REFERENCE_LAYOUT_PATH);
     await expect(page.locator('#ladder-section')).toBeVisible();

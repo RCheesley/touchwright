@@ -29,6 +29,7 @@ import {
 } from './board-svg.js';
 import { describeFailure, required } from './dom.js';
 import { createDrillView, SAMPLE_DRILL_TEXT, type DrillView } from './drill-view.js';
+import { DrillTextError, generateDrillText } from '../drill/text.js';
 import { summariseKeymap } from './layout-summary.js';
 import { createProgressView, type ProgressView } from './progress-view.js';
 
@@ -69,6 +70,27 @@ export interface WireUpOptions {
   readonly session?: DrillSession;
   /** Injected so a test can observe an export without a browser download. */
   readonly download?: (fileName: string, json: string) => void;
+  /**
+   * Seed for drill text. Defaults to the clock, so each attempt at a lesson is
+   * different; a test passes a fixed one to get the same drill every run.
+   */
+  readonly seed?: () => number;
+}
+
+/** Words per drill. Long enough to score honestly, short enough to finish. */
+const DRILL_WORDS = 12;
+
+/**
+ * The rung after this one, or null on the last — and null for a lesson that is
+ * not on this ladder at all, which an imported file from a longer ladder can
+ * produce. Identity is by id, never by object, because the ladder is rebuilt
+ * whenever a layout is loaded.
+ */
+function nextAfter(lessons: readonly Lesson[], lesson: Lesson | null): Lesson | null {
+  if (lesson === null) return null;
+  const index = lessons.findIndex((candidate) => candidate.id === lesson.id);
+  if (index < 0) return null;
+  return lessons[index + 1] ?? null;
 }
 
 export function wireUp(root: ParentNode = document, options: WireUpOptions = {}): void {
@@ -106,6 +128,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
   const storage = options.storage ?? chooseStorage();
   const store = new ProgressStore(storage.driver);
   const session = options.session ?? createDrillSession();
+  const seed = options.seed ?? ((): number => Date.now());
   const startupLoad = store.load();
   const startupApplied = session.applyLoadedProgress(startupLoad.progress);
   const startupWarnings = [...startupLoad.warnings, ...startupApplied.warnings];
@@ -154,28 +177,64 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
   /**
    * Builds the drill surface for one lesson of the ladder.
    *
-   * ---------------------------------------------------------------------------
-   * SEAM FOR ISSUE #3, drill text generation.
+   * The text is generated from the lesson's own key set, so a learner is never
+   * asked for a key the ladder has not given them yet. With no lesson — which
+   * only happens if a layout produces no ladder at all — the sample stands in.
    *
-   * The lesson is chosen here and its id, name and key set are already in hand;
-   * only the text is still the sample. When #3 lands, `text:` becomes a call to
-   * the generator with `lesson.keys` and `lesson.stage`, and nothing else in this
-   * function or in `drill-view.ts` changes. `nextLessonName` stays null until then
-   * on purpose: the result card would otherwise offer "Start <the next lesson>" on
-   * a button that could only restart the same sample text, and a button that lies
-   * is worse than one rung of the ladder being reached from the ladder itself.
-   * ---------------------------------------------------------------------------
+   * A lesson that cannot produce text is a bug in the generator or in the
+   * ladder, so it is reported rather than papered over with the sample: a drill
+   * that quietly practises the wrong keys is worse than no drill.
    */
-  function showDrill(keymap: Keymap, lesson: Lesson | null): void {
+  function showDrill(
+    keymap: Keymap,
+    lesson: Lesson | null,
+    nextLesson: Lesson | null,
+    lessons: readonly Lesson[] = [],
+  ): void {
+    let text: string;
+    if (lesson === null) {
+      text = SAMPLE_DRILL_TEXT;
+    } else {
+      try {
+        text = generateDrillText(lesson, { seed: seed(), words: DRILL_WORDS });
+      } catch (cause) {
+        if (cause instanceof DrillTextError) {
+          drillView?.destroy();
+          drillView = null;
+          drillSection.hidden = true;
+          showError(`Could not build a drill for “${lesson.name}”: ${cause.message}`);
+          return;
+        }
+        throw cause;
+      }
+    }
+
     drillView?.destroy();
     drillView = createDrillView({
       board: GLOVE80,
       keymap,
-      text: SAMPLE_DRILL_TEXT,
+      text,
       session,
       lessonId: lesson?.id ?? null,
       lessonName: lesson?.name ?? 'the sample drill',
-      nextLessonName: null,
+      // Named only when there is somewhere to advance to, so the result card
+      // never offers a rung that does not exist.
+      nextLessonName: nextLesson?.name ?? null,
+      // And the offer is real: taking it rebuilds the drill on the next lesson
+      // and remembers where the learner has got to.
+      ...(nextLesson === null
+        ? {}
+        : {
+            onAdvance: (): void => {
+              session.progress.lesson = lessons.findIndex(
+                (candidate) => candidate.id === nextLesson.id,
+              );
+              showDrill(keymap, nextLesson, nextAfter(lessons, nextLesson));
+              progressView?.save();
+              progressView?.refresh();
+              drillStart.focus();
+            },
+          }),
       root,
       onNextKey: (next): void => {
         if (next === null) {
@@ -218,7 +277,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
         // Returning to an earlier lesson rebuilds the drill for it. Focus lands on
         // the start button, so a keyboard learner is left somewhere they can act
         // rather than on a button whose meaning has just changed.
-        showDrill(keymap, lesson);
+        showDrill(keymap, lesson, nextAfter(lessons, lesson), lessons);
         drillStart.focus();
       },
     });
@@ -226,7 +285,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
     // The lesson the learner left off on, clamped to a ladder this layout can
     // actually produce: an imported file may have come from a longer one.
     const current = lessons[Math.min(Math.max(0, session.progress.lesson), lessons.length - 1)];
-    showDrill(keymap, current ?? null);
+    showDrill(keymap, current ?? null, nextAfter(lessons, current ?? null), lessons);
   }
 
   function clearError(): void {
