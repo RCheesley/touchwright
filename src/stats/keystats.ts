@@ -550,3 +550,73 @@ function reportSummary(
   }
   return `${accuracy}% of ${totalAttempts} presses were right. Your ${worst.label} is where most of the misses are.`;
 }
+
+export interface WeakKeySelection {
+  /**
+   * Take the keys that are only worth watching as well as the ones that need
+   * work. Off by default: a repair drill built from everything that has ever
+   * wobbled is a lesson, not a repair.
+   */
+  readonly includeWatch?: boolean;
+  /**
+   * At most this many keys, worst first. Absent means every key that qualifies;
+   * a caller with a limited amount of room says so rather than slicing after
+   * the fact, so the ordering is decided in one place.
+   */
+  readonly limit?: number;
+}
+
+/**
+ * The keys that need work, worst first, flattened out of the finger-and-row
+ * report.
+ *
+ * `summariseKeyStats` already does the analysis: it bands every key, orders the
+ * worst first inside each row, and refuses to draw a conclusion from too few
+ * presses. What it does not do is hand back a plain list, because its shape is
+ * deliberately two levels deep for the view that reads it. This is that list,
+ * and it is what feeds `nextStep` and `generateRepairText`: a repair drill wants
+ * keys, not a diagnosis.
+ *
+ * Only measured keys are ever returned. `WEAK_KEY_THRESHOLDS.minAttempts` is the
+ * rule that stops one miss on a key pressed twice from being called a weakness,
+ * and it is applied by `summariseKeyStats` when the report is built; the check
+ * here is belt and braces, so that a hand-made report cannot sneak an unmeasured
+ * key into a drill.
+ *
+ * Deterministic: equal need is settled by the character, so the same report
+ * always produces the same list in the same order.
+ */
+export function selectWeakKeys(
+  report: KeyStatsReport,
+  options?: WeakKeySelection,
+): readonly WeakKey[] {
+  const limit = options?.limit;
+  if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0)) {
+    throw new RangeError(`limit must be a non-negative whole number, got ${String(limit)}`);
+  }
+
+  const wanted: readonly Severity[] = options?.includeWatch === true ? ['weak', 'watch'] : ['weak'];
+
+  const keys = report.fingers
+    .flatMap((finger) => finger.rows)
+    .flatMap((row) => row.keys)
+    .filter((key) => key.measured && wanted.includes(key.severity))
+    .sort((left, right) => {
+      const need = byNeed(left, right);
+      return need === 0 ? left.character.localeCompare(right.character) : need;
+    });
+
+  return limit === undefined ? keys : keys.slice(0, limit);
+}
+
+/**
+ * The same list as characters, which is what both `nextStep` and
+ * `generateRepairText` take. Statistics are keyed by code point, so the
+ * character comes from the report rather than from an id being treated as one.
+ */
+export function weakKeyCharacters(
+  report: KeyStatsReport,
+  options?: WeakKeySelection,
+): readonly string[] {
+  return selectWeakKeys(report, options).map((key) => key.character);
+}
