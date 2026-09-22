@@ -2,8 +2,15 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
-import { SAMPLE_DRILL_TEXT } from '../../src/ui/drill-view.js';
-import { loadReferenceLayout, REFERENCE_LAYOUT_PATH } from './helpers.js';
+import {
+  REFERENCE_LAYOUT_PATH,
+  drillPrefix,
+  expectedDrillText,
+  expectedKeyDescription,
+  gotoApp,
+  loadReferenceLayout,
+  referenceLadder,
+} from './helpers.js';
 import type { Page } from '@playwright/test';
 
 /**
@@ -29,7 +36,7 @@ function rungs(page: Page) {
 async function earnThreeStars(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Start drill' }).click();
   // A delay, so the drill has a measurable pace rather than an unmeasurable one.
-  await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+  await page.keyboard.type(expectedDrillText(), { delay: 20 });
   await expect(page.locator('#drill-result')).toBeVisible();
   await expect(rungs(page).first()).toContainText('3 stars of 3');
 }
@@ -47,35 +54,69 @@ async function earnThreeStars(page: Page): Promise<void> {
 
 test.describe('the trainer journeys', () => {
   test('completes a lesson from start to finish', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
 
     await page.getByRole('button', { name: 'Start drill' }).click();
-    await expect(page.locator('#drill-next')).toContainText('left hand, pinky, home row');
+    await expect(page.locator('#drill-next')).toContainText(
+      expectedKeyDescription([...expectedDrillText()][0] ?? 'a'),
+    );
 
     // A delay, so the drill has a measurable pace rather than an unmeasurable one.
-    await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+    await page.keyboard.type(expectedDrillText(), { delay: 20 });
 
     await expect(page.locator('#drill-result')).toBeVisible();
     await expect(page.locator('#drill-result-summary')).toContainText('Drill complete');
     await expect(page.locator('#drill-result-detail')).toContainText('words per minute');
     // Every character was typed correctly, so the whole text is marked correct.
     await expect(page.locator('#drill-text .drill-char[data-mark="correct"]')).toHaveCount(
-      [...SAMPLE_DRILL_TEXT].length,
+      [...expectedDrillText()].length,
     );
     await expect(page.locator('#drill-text .drill-char[data-mark="wrong"]')).toHaveCount(0);
     // And the next step is named, in scoring's words, on a button.
     await expect(page.locator('#drill-continue')).not.toBeEmpty();
   });
 
-  test.fixme('earns two stars and advances to the next lesson', () => {});
+  test('earns two stars and advances to the next lesson', async ({ page }) => {
+    await gotoApp(page);
+    await loadReferenceLayout(page);
+
+    const ladder = referenceLadder();
+    const first = ladder[0];
+    const second = ladder[1];
+    expect(first, 'the reference ladder should have a first lesson').toBeDefined();
+    expect(second, 'the reference ladder should have a second lesson').toBeDefined();
+
+    // The ladder starts with only the first rung reachable.
+    const rungs = page.locator('#ladder-list li');
+    await expect(rungs.first()).toContainText(first!.name);
+
+    await page.getByRole('button', { name: 'Start drill' }).click();
+    // Typed correctly and briskly: well past the two-star thresholds, which are
+    // 95 per cent accuracy at 18 words per minute.
+    await page.keyboard.type(expectedDrillText(), { delay: 15 });
+
+    await expect(page.locator('#drill-result')).toBeVisible();
+    await expect(page.locator('#drill-result-detail')).toContainText('stars of 3');
+
+    // Two stars or better names the next rung, on the button and in the reason.
+    const advance = page.locator('#drill-continue');
+    await expect(advance).toContainText(second!.name);
+    await expect(page.locator('#drill-result-why')).not.toBeEmpty();
+
+    // And taking it actually moves the drill on to that lesson, rather than
+    // restarting this one under a button that named the next.
+    await advance.click();
+    await expect(page.locator('#drill-text')).toHaveText(expectedDrillText(1));
+    await expect(page.locator('#drill-text')).not.toHaveText(expectedDrillText(0));
+  });
 
   test.fixme('builds a repair drill from exactly the keys that were missed', () => {});
 
   test.fixme('runs a sprint to its limit, and offers an untimed option', () => {});
 
   test('keeps progress across a reload', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -93,7 +134,7 @@ test.describe('the trainer journeys', () => {
   });
 
   test('exports progress, clears storage, and imports it back', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await earnThreeStars(page);
 
@@ -127,7 +168,7 @@ test.describe('the trainer journeys', () => {
   });
 
   test('completes a drill without ever touching the mouse', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     // Choosing the file is the one step a test cannot do with keystrokes; from
     // here on nothing but the keyboard is used, and no click is ever issued.
     await page.locator('#layout-file').setInputFiles(REFERENCE_LAYOUT_PATH);
@@ -149,18 +190,18 @@ test.describe('the trainer journeys', () => {
     await expect(page.locator('#drill-surface')).toBeFocused();
     await expect(page.locator('#drill-surface')).toHaveAttribute('data-captured', 'true');
 
-    await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+    await page.keyboard.type(expectedDrillText(), { delay: 20 });
 
     await expect(page.locator('#drill-result')).toBeVisible();
     await expect(page.locator('#drill-result-summary')).toContainText('Drill complete');
   });
 
   test('releases keyboard capture on Escape and restores tab navigation', async ({ page }) => {
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await page.getByRole('button', { name: 'Start drill' }).click();
 
-    await page.keyboard.type('ask');
+    await page.keyboard.type(drillPrefix(3));
     await expect(page.locator('#drill-surface')).toHaveAttribute('data-captured', 'true');
     await expect(page.locator('#drill-text .drill-char[data-mark="correct"]')).toHaveCount(3);
 

@@ -1,7 +1,16 @@
 import { expect, test, type Page } from '@playwright/test';
 import { AA_NON_TEXT, AA_TEXT, contrastRatio } from '../../src/ui/contrast.js';
-import { SAMPLE_DRILL_TEXT } from '../../src/ui/drill-view.js';
-import { expectNoAxeViolations, loadReferenceLayout } from './helpers.js';
+import {
+  expectNoAxeViolations,
+  loadReferenceLayout,
+  expectedDrillText,
+  expectedKeyDescription,
+  gotoApp,
+  drillPrefix,
+  drillCharAt,
+  expectedKeyFinger,
+  wrongKeyFor,
+} from './helpers.js';
 
 /**
  * The drill surface, in a real browser.
@@ -61,7 +70,7 @@ async function startDrill(page: Page): Promise<void> {
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('./');
+  await gotoApp(page);
   await loadReferenceLayout(page);
   await expect(page.locator('#drill-section')).toBeVisible();
 });
@@ -70,7 +79,7 @@ test('takes printable keys with no input element anywhere on the surface', async
   await expect(page.locator('#drill-section').locator('input, textarea')).toHaveCount(0);
   await startDrill(page);
 
-  await page.keyboard.type('ask');
+  await page.keyboard.type(drillPrefix(3));
 
   const marks = page.locator('#drill-text .drill-char');
   await expect(marks.nth(0)).toHaveAttribute('data-mark', 'correct');
@@ -84,8 +93,8 @@ test('distinguishes correct, wrong and pending by decoration, not only by colour
   page,
 }) => {
   await startDrill(page);
-  await page.keyboard.type('a');
-  await page.keyboard.type('z');
+  await page.keyboard.type(drillPrefix(1));
+  await page.keyboard.type(wrongKeyFor(drillCharAt(1)));
 
   const decoration = async (mark: string, property: string): Promise<string> =>
     style(page, `#drill-text .drill-char[data-mark="${mark}"]`, property);
@@ -108,7 +117,7 @@ test('distinguishes correct, wrong and pending by decoration, not only by colour
 
 test('every character on the drill surface meets AA against the surface', async ({ page }) => {
   await startDrill(page);
-  await page.keyboard.type('az');
+  await page.keyboard.type(drillPrefix(1) + wrongKeyFor(drillCharAt(1)));
 
   for (const mark of ['correct', 'wrong', 'pending']) {
     const selector = `#drill-text .drill-char[data-mark="${mark}"]:not([data-cursor])`;
@@ -135,18 +144,22 @@ test('names the next key in words, and only then highlights it on the board', as
   await startDrill(page);
 
   // The readout is the primary channel: hand, finger and row, in words.
-  await expect(page.locator('#drill-next')).toContainText('left hand, pinky, home row');
+  await expect(page.locator('#drill-next')).toContainText(
+    expectedKeyDescription([...expectedDrillText()][0] ?? 'a'),
+  );
   // The board says the same thing in text, and the highlight follows it.
-  await expect(page.locator('#board-next')).toContainText('left hand, pinky, home row');
+  await expect(page.locator('#board-next')).toContainText(
+    expectedKeyDescription([...expectedDrillText()][0] ?? 'a'),
+  );
   const highlighted = page.locator('#board-figure .board-key-next');
   await expect(highlighted).toHaveCount(1);
-  await expect(highlighted).toHaveAttribute('data-finger', 'pinky');
+  await expect(highlighted).toHaveAttribute('data-finger', expectedKeyFinger(drillCharAt(0)));
 
-  await page.keyboard.type('a');
-  await expect(page.locator('#drill-next')).toContainText('left hand, index, home row');
+  await page.keyboard.type(drillPrefix(1));
+  await expect(page.locator('#drill-next')).toContainText(expectedKeyDescription(drillCharAt(1)));
   await expect(page.locator('#board-figure .board-key-next')).toHaveAttribute(
     'data-finger',
-    'index',
+    expectedKeyFinger(drillCharAt(1)),
   );
 });
 
@@ -162,8 +175,7 @@ test('gives the surface an accessible name and a description naming the next key
     return ids.map((id) => document.getElementById(id)?.textContent ?? '').join(' ');
   });
 
-  expect(description).toContain('pinky');
-  expect(description).toContain('home row');
+  expect(description).toContain(expectedKeyDescription(drillCharAt(0)));
   // How to escape is part of the description, and it is visible text as well.
   expect(description).toContain('Escape');
   await expect(page.locator('#drill-escape')).toBeVisible();
@@ -171,7 +183,7 @@ test('gives the surface an accessible name and a description naming the next key
 
 test('shows the result at the end, with the next step named', async ({ page }) => {
   await startDrill(page);
-  await page.keyboard.type(SAMPLE_DRILL_TEXT, { delay: 20 });
+  await page.keyboard.type(expectedDrillText(), { delay: 20 });
 
   const result = page.locator('#drill-result');
   await expect(result).toBeVisible();
@@ -245,7 +257,7 @@ test('keeps every word on one line at 320 CSS pixels', async ({ page }) => {
 test('keeps every word on one line at 600 and 1200 CSS pixels', async ({ page }) => {
   for (const width of [600, 1200]) {
     await page.setViewportSize({ width, height: 800 });
-    await page.goto('./');
+    await gotoApp(page);
     await loadReferenceLayout(page);
     await startDrill(page);
 
@@ -260,17 +272,17 @@ test('keeps every word on one line at 600 and 1200 CSS pixels', async ({ page })
 test('is axe clean with the drill running and with the result showing', async ({ page }) => {
   await expectNoAxeViolations(page, 'the page with the drill surface ready');
   await startDrill(page);
-  await page.keyboard.type('ask');
+  await page.keyboard.type(drillPrefix(3));
   await expectNoAxeViolations(page, 'the page with a drill in progress');
 
-  await page.keyboard.type(SAMPLE_DRILL_TEXT.slice(3), { delay: 20 });
+  await page.keyboard.type(expectedDrillText().slice(3), { delay: 20 });
   await expect(page.locator('#drill-result')).toBeVisible();
   await expectNoAxeViolations(page, 'the page with a result showing');
 });
 
 test('animates nothing on the drill surface when reduced motion is asked for', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
-  await page.goto('./');
+  await gotoApp(page);
   await loadReferenceLayout(page);
   await startDrill(page);
   await page.keyboard.type('a');
