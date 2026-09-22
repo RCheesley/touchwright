@@ -56,7 +56,7 @@ import {
 } from '../drill/sprint.js';
 import type { Keymap } from '../keymap/types.js';
 import { keyStatId } from '../stats/storage.js';
-import { required } from './dom.js';
+import { announceInto, required } from './dom.js';
 
 /**
  * A sample drill, and the seam where generated text will arrive.
@@ -147,6 +147,12 @@ export interface DrillViewOptions {
    * not pass this, and the button offers another go at this lesson instead.
    */
   readonly onAdvance?: () => void;
+  /**
+   * Called when the learner takes up an offer to drill the keys that slipped,
+   * with exactly the keys the scoring picked out. Like `onAdvance`, the offer is
+   * only made when there is something wired up to deliver it.
+   */
+  readonly onRepair?: (weakKeys: readonly string[]) => void;
   /**
    * Called whenever the next key changes, and with null when there is none. The
    * board highlight is wired up through this, so that reinforcement is the
@@ -343,8 +349,11 @@ export function createDrillView(options: DrillViewOptions): DrillView {
   const lessonName = options.lessonName ?? null;
   const nextLessonName = options.nextLessonName ?? null;
   const onAdvance = options.onAdvance ?? null;
+  const onRepair = options.onRepair ?? null;
   /** Whether the result on screen earned a move to the next lesson. */
   let advanceEarned = false;
+  /** The keys the result on screen offers to repair, empty when it offers none. */
+  let repairOffered: readonly string[] = [];
   const limitMs = options.limitMs ?? NO_LIMIT;
   const session =
     options.session ?? createDrillSession(options.now === undefined ? {} : { now: options.now });
@@ -430,10 +439,14 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     el.resultWhy.textContent = '';
     el.continue.textContent = '';
     advanceEarned = false;
+    repairOffered = [];
   }
 
   function announce(message: string): void {
-    el.progress.textContent = message;
+    // Through the shared helper, because a live region only speaks when its
+    // contents change: mistyping the same key twice in a row produces the same
+    // sentence twice, and the second one was silent.
+    announceInto(el.progress, message);
   }
 
   function setCaptureState(message: string): void {
@@ -668,7 +681,17 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     // it. A button that names a rung and then restarts this one is worse than a
     // plain "go again".
     advanceEarned = score.nextStep.advances && onAdvance !== null;
-    el.continue.textContent = advanceEarned ? score.nextStep.label : 'Drill this lesson again';
+    // A repair is offered only when scoring picked keys out AND something is
+    // wired up to build one. Same rule as advancing: never name a thing on a
+    // button that the button will not do.
+    repairOffered =
+      !advanceEarned && onRepair !== null && score.nextStep.repairKeys.length > 0
+        ? score.nextStep.repairKeys
+        : [];
+    el.continue.textContent =
+      advanceEarned || repairOffered.length > 0
+        ? score.nextStep.label
+        : `Drill this ${mode === 'lesson' ? 'lesson' : mode} again`;
     el.result.hidden = false;
 
     // Unhidden first, then written, so the assertive region announces the result
@@ -858,6 +881,12 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     if (advanceEarned && onAdvance !== null) {
       advanceEarned = false;
       onAdvance();
+      return;
+    }
+    if (repairOffered.length > 0 && onRepair !== null) {
+      const keys = repairOffered;
+      repairOffered = [];
+      onRepair(keys);
       return;
     }
     startDrill();

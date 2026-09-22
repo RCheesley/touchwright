@@ -4,6 +4,7 @@ import AxeBuilder from '@axe-core/playwright';
 import { expect, type Page } from '@playwright/test';
 import { GLOVE80 } from '../../src/board/index.js';
 import { generateDrillText } from '../../src/drill/text.js';
+import { sprintLesson, sprintWordCount } from '../../src/drill/sprint.js';
 import { parseMoErgoLayoutText } from '../../src/keymap/moergo.js';
 import { generateLadder, type Lesson } from '../../src/ladder/index.js';
 import { describeKey, indexKeys } from '../../src/board/types.js';
@@ -140,4 +141,21 @@ export function expectedKeyHand(character: string): string {
     throw new RangeError(`The board has no key at position ${String(position)}`);
   }
   return key.hand;
+}
+
+/**
+ * The text a sprint will drill, worked out the same way the app works it out.
+ *
+ * With no saved progress only the first rung is unlocked, so that is what a
+ * sprint runs across.
+ */
+export function expectedSprintText(limitMs: number): string {
+  return generateDrillText(sprintLesson(referenceLadder(), 0), {
+    seed: DRILL_SEED,
+    words: sprintWordCount(limitMs),
+  });
+}
+
+export function sprintPrefix(count: number, limitMs: number): string {
+  return [...expectedSprintText(limitMs)].slice(0, count).join('');
 }

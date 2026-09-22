@@ -1,14 +1,13 @@
 import { expect, test, type Page } from '@playwright/test';
 import { NO_LIMIT, SPRINT_DURATIONS_MS } from '../../src/drill/limits.js';
-import { sprintLesson, sprintWordCount } from '../../src/drill/sprint.js';
-import { generateDrillText } from '../../src/drill/text.js';
 import {
-  DRILL_SEED,
   expectedDrillText,
   expectNoAxeViolations,
   gotoApp,
   loadReferenceLayout,
   referenceLadder,
+  expectedSprintText,
+  sprintPrefix,
 } from './helpers.js';
 
 /**
@@ -22,18 +21,6 @@ import {
  * pinned `?seed=` and the ladder the reference layout generates, so a change to
  * the generator fails these rather than being silently agreed with.
  */
-
-/** With no saved progress only the first rung is unlocked, so that is the sprint. */
-function expectedSprintText(limitMs: number): string {
-  return generateDrillText(sprintLesson(referenceLadder(), 0), {
-    seed: DRILL_SEED,
-    words: sprintWordCount(limitMs),
-  });
-}
-
-function sprintPrefix(count: number, limitMs: number): string {
-  return [...expectedSprintText(limitMs)].slice(0, count).join('');
-}
 
 /** Choose a duration and start a sprint with it. */
 async function startSprint(page: Page, limitMs: number): Promise<void> {

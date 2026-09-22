@@ -3,35 +3,19 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
-  DRILL_SEED,
   REFERENCE_LAYOUT_PATH,
   drillPrefix,
+  drillCharAt,
+  wrongKeyFor,
   expectedDrillText,
   expectedKeyDescription,
   gotoApp,
   loadReferenceLayout,
   referenceLadder,
+  expectedSprintText,
+  sprintPrefix,
 } from './helpers.js';
-import { sprintLesson, sprintWordCount } from '../../src/drill/sprint.js';
-import { generateDrillText } from '../../src/drill/text.js';
 import type { Page } from '@playwright/test';
-
-/**
- * The text a sprint will drill, worked out the way the app works it out: the
- * pinned seed, and the whole key set unlocked so far. With no saved progress
- * that is the first rung, so this is the ladder's first lesson's keys rather
- * than its text.
- */
-function expectedSprintText(limitMs: number): string {
-  return generateDrillText(sprintLesson(referenceLadder(), 0), {
-    seed: DRILL_SEED,
-    words: sprintWordCount(limitMs),
-  });
-}
-
-function sprintPrefix(count: number, limitMs: number): string {
-  return [...expectedSprintText(limitMs)].slice(0, count).join('');
-}
 
 /**
  * Tab forward until the element with this id has focus, returning every stop on
@@ -131,7 +115,58 @@ test.describe('the trainer journeys', () => {
     await expect(page.locator('#drill-text')).not.toHaveText(expectedDrillText(0));
   });
 
-  test.fixme('builds a repair drill from exactly the keys that were missed', () => {});
+  test('builds a repair drill from exactly the keys that were missed', async ({ page }) => {
+    await gotoApp(page);
+    await loadReferenceLayout(page);
+    await page.getByRole('button', { name: 'Start drill' }).click();
+
+    // Fumble the third key repeatedly, then type the rest cleanly. Enough
+    // mistakes to stay under two stars, so the result offers a repair rather
+    // than the next rung -- a learner must not climb the ladder by fumbling.
+    const fumbled = drillCharAt(2);
+    await page.keyboard.type(drillPrefix(2), { delay: 15 });
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await page.keyboard.press(wrongKeyFor(fumbled));
+      await page.keyboard.press('Backspace');
+    }
+    await page.keyboard.type(expectedDrillText().slice(2), { delay: 15 });
+    await expect(page.locator('#drill-result')).toBeVisible();
+
+    // The offer names the key that slipped. The card presents it upper case, so
+    // the comparison ignores case rather than assuming which one it picked.
+    const offer = page.locator('#drill-continue');
+    await expect(offer).toContainText(new RegExp(`repair`, 'i'));
+    await expect(offer).toContainText(
+      new RegExp(fumbled.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'),
+    );
+
+    await offer.click();
+
+    // The repair drill is built from exactly that key, plus anchors it can
+    // type. Every character in it must be one the lesson has unlocked.
+    const drillText = page.locator('#drill-text');
+    await expect(drillText).toContainText(fumbled);
+    await expect(drillText).not.toHaveText(expectedDrillText());
+
+    // Read back for the set check below, which needs the characters themselves
+    // rather than a match against them.
+    const repair = await drillText.innerText();
+
+    const lesson = referenceLadder()[0];
+    expect(lesson).toBeDefined();
+    const allowed = new Set([...lesson!.keys, ' ']);
+    for (const character of repair) {
+      expect(allowed.has(character), `repair drill used ${JSON.stringify(character)}`).toBe(true);
+    }
+
+    // And it is typeable: the surface accepts the first key of it.
+    await page
+      .getByRole('button', { name: /Start|Resume/ })
+      .first()
+      .click();
+    await page.keyboard.press([...repair][0] ?? 'a');
+    await expect(page.locator('#drill-text .drill-char[data-mark="correct"]')).toHaveCount(1);
+  });
 
   test('runs a sprint to its limit, and offers an untimed option', async ({ page }) => {
     // The page's own clock is faked, so a thirty second sprint costs no wall
