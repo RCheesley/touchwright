@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, test } from '@playwright/test';
 import {
+  DRILL_SEED,
   REFERENCE_LAYOUT_PATH,
   drillPrefix,
   expectedDrillText,
@@ -11,7 +12,26 @@ import {
   loadReferenceLayout,
   referenceLadder,
 } from './helpers.js';
+import { sprintLesson, sprintWordCount } from '../../src/drill/sprint.js';
+import { generateDrillText } from '../../src/drill/text.js';
 import type { Page } from '@playwright/test';
+
+/**
+ * The text a sprint will drill, worked out the way the app works it out: the
+ * pinned seed, and the whole key set unlocked so far. With no saved progress
+ * that is the first rung, so this is the ladder's first lesson's keys rather
+ * than its text.
+ */
+function expectedSprintText(limitMs: number): string {
+  return generateDrillText(sprintLesson(referenceLadder(), 0), {
+    seed: DRILL_SEED,
+    words: sprintWordCount(limitMs),
+  });
+}
+
+function sprintPrefix(count: number, limitMs: number): string {
+  return [...expectedSprintText(limitMs)].slice(0, count).join('');
+}
 
 /**
  * Tab forward until the element with this id has focus, returning every stop on
@@ -113,7 +133,51 @@ test.describe('the trainer journeys', () => {
 
   test.fixme('builds a repair drill from exactly the keys that were missed', () => {});
 
-  test.fixme('runs a sprint to its limit, and offers an untimed option', () => {});
+  test('runs a sprint to its limit, and offers an untimed option', async ({ page }) => {
+    // The page's own clock is faked, so a thirty second sprint costs no wall
+    // time and an untimed one can be pushed an hour ahead between assertions.
+    await page.clock.install();
+    await gotoApp(page);
+    await loadReferenceLayout(page);
+
+    // The limit is adjustable before the sprint starts, and the setting is
+    // stated in visible text rather than only shown as a selected option.
+    await page.locator('#sprint-duration').selectOption('30000');
+    await expect(page.locator('#sprint-setting')).toContainText('Current setting: 30 seconds');
+    await page.getByRole('button', { name: 'Start sprint' }).click();
+
+    // A sprint runs across every unlocked key, so it is not the lesson's text.
+    await expect(page.locator('#drill-text')).toHaveText(expectedSprintText(30_000));
+    await expect(page.locator('#sprint-countdown')).toHaveText('Time left: 0:30');
+
+    await page.keyboard.type(sprintPrefix(12, 30_000), { delay: 20 });
+    await page.clock.fastForward(31_000);
+
+    // It ran to its limit, and the result says it was a sprint rather than a
+    // lesson: different wording, and the kind of drill named outright.
+    await expect(page.locator('#drill-result')).toBeVisible();
+    await expect(page.locator('#drill-result-summary')).toContainText('Sprint over, time up');
+    await expect(page.locator('#drill-result-detail')).toContainText(
+      'sprint across every unlocked key',
+    );
+    await expect(page.locator('#drill-result-detail')).toContainText('the time limit ran out');
+
+    // And the untimed option is genuinely untimed.
+    await page.locator('#sprint-duration').selectOption('0');
+    await expect(page.locator('#sprint-setting')).toContainText('untimed');
+    await page.getByRole('button', { name: 'Start sprint' }).click();
+    await expect(page.locator('#sprint-countdown')).toContainText('no time limit');
+
+    await page.keyboard.type(sprintPrefix(4, 0), { delay: 20 });
+    // An hour later, with no keystroke in between, it has still not expired.
+    await page.clock.fastForward('01:00:00');
+    await expect(page.locator('#drill-result')).toBeHidden();
+    await expect(page.locator('#sprint-countdown')).toContainText('no time limit');
+
+    // And it is still typeable after all that time, rather than quietly dead.
+    await page.keyboard.type(sprintPrefix(8, 0).slice(4), { delay: 20 });
+    await expect(page.locator('#drill-text .drill-char[data-mark="correct"]')).toHaveCount(8);
+  });
 
   test('keeps progress across a reload', async ({ page }) => {
     await gotoApp(page);

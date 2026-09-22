@@ -129,12 +129,23 @@ a {
   min-height: 1.5rem;
 }
 
-input[type='file'] {
+input[type='file'],
+select {
   padding: 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface-sunken);
   color: var(--ink);
+}
+
+/*
+ * Comfortably past the 24 by 24 CSS pixel floor of WCAG 2.5.8, and past the
+ * 1.5rem the bare element rule sets, because a duration control is something
+ * people change mid-session with whatever pointer they have.
+ */
+select {
+  min-height: 2.25rem;
+  font: inherit;
 }
 
 :focus-visible {
@@ -365,6 +376,22 @@ dd {
 .drill-next {
   margin-block: 0.5rem;
   font-weight: 600;
+}
+
+/*
+ * The sprint countdown.
+ *
+ * Tabular figures so the number does not jog sideways as the digits change: it
+ * sits directly above the text being typed, and movement there is a distraction
+ * at best. It carries no transition in either motion mode for the same reason
+ * the drill text carries none — the second has to land when it lands.
+ */
+.sprint-countdown {
+  margin-block: 0.5rem;
+  color: var(--ink);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: none;
 }
 
 .drill-surface {

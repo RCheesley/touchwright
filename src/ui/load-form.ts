@@ -30,8 +30,11 @@ import {
 import { describeFailure, required } from './dom.js';
 import { createDrillView, SAMPLE_DRILL_TEXT, type DrillView } from './drill-view.js';
 import { DrillTextError, generateDrillText } from '../drill/text.js';
+import { highestUnlockedLesson } from '../drill/scoring.js';
+import { SprintError, sprintLesson, sprintWordCount } from '../drill/sprint.js';
 import { summariseKeymap } from './layout-summary.js';
 import { createProgressView, type ProgressView } from './progress-view.js';
+import { createSprintControls, type SprintControls } from './sprint-controls.js';
 
 /**
  * Where saved progress lives, and what to tell the learner about it.
@@ -105,6 +108,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
   const legend = required('#board-legend', HTMLElement, root);
   const keyList = required('#board-key-list', HTMLElement, root);
   const drillSection = required('#drill-section', HTMLElement, root);
+  const sprintSection = required('#sprint-section', HTMLElement, root);
   const ladderSection = required('#ladder-section', HTMLElement, root);
   const statsSection = required('#stats-section', HTMLElement, root);
   const progressSection = required('#progress-section', HTMLElement, root);
@@ -115,6 +119,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
   let restingHighlight = GLOVE80.spacePosition;
   let drillView: DrillView | null = null;
   let progressView: ProgressView | null = null;
+  let sprintControls: SprintControls | null = null;
 
   /**
    * Storage, the session and the saved progress are set up once, here, before a
@@ -139,6 +144,7 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
     summary.hidden = true;
     board.hidden = true;
     drillSection.hidden = true;
+    sprintSection.hidden = true;
     ladderSection.hidden = true;
     statsSection.hidden = true;
     progressSection.hidden = true;
@@ -236,21 +242,90 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
             },
           }),
       root,
-      onNextKey: (next): void => {
-        if (next === null) {
-          highlight(restingHighlight, 'Highlighted on the diagram');
-          return;
-        }
-        highlight(next.position, 'Highlighted on the diagram, the next key');
-      },
-      onScored: (): void => {
-        // The stars and the experience are already in live progress by now. This
-        // is where they are written down and where the ladder learns about them.
-        progressView?.save();
-        progressView?.refresh();
-      },
+      onNextKey: followNextKey,
+      onScored: saveAndRefresh,
     });
     drillSection.hidden = false;
+  }
+
+  /** The board highlight follows the drill rather than leading it. */
+  function followNextKey(next: { readonly position: number } | null): void {
+    if (next === null) {
+      highlight(restingHighlight, 'Highlighted on the diagram');
+      return;
+    }
+    highlight(next.position, 'Highlighted on the diagram, the next key');
+  }
+
+  function saveAndRefresh(): void {
+    // The stars and the experience are already in live progress by now. This is
+    // where they are written down and where the ladder learns about them.
+    progressView?.save();
+    progressView?.refresh();
+  }
+
+  /**
+   * Replaces the drill surface with a sprint and starts it.
+   *
+   * A sprint is not a rung: it runs against every key unlocked so far, folded
+   * into one synthetic lesson by `sprintLesson`, and it carries no lesson id, so
+   * it earns experience and no stars. Scoring refuses stars outside lesson mode
+   * anyway; passing null here means there is nowhere for them to go either.
+   *
+   * Building the drill destroys the previous view, which stops that drill's
+   * timer. Nothing depends on that happening: a sprint timer is bound to its own
+   * drill and stops itself when another drill becomes current. Regression 3.
+   */
+  function showSprint(keymap: Keymap, lessons: readonly Lesson[], limitMs: number): void {
+    const stars = lessons.map((lesson) => session.progress.stars[lesson.id] ?? 0);
+    const unlocked = highestUnlockedLesson(stars);
+
+    let text: string;
+    try {
+      const lesson = sprintLesson(lessons, unlocked);
+      text = generateDrillText(lesson, { seed: seed(), words: sprintWordCount(limitMs) });
+    } catch (cause) {
+      // Surfaced, never swallowed, and the drill already on screen is left
+      // exactly as it was: a sprint that cannot be built must not take the
+      // learner's lesson away with it.
+      if (cause instanceof SprintError || cause instanceof DrillTextError) {
+        showSprintError(`Could not build a sprint: ${cause.message}`);
+        return;
+      }
+      throw cause;
+    }
+
+    clearError();
+    drillView?.destroy();
+    drillView = createDrillView({
+      board: GLOVE80,
+      keymap,
+      text,
+      limitMs,
+      session,
+      mode: 'sprint',
+      lessonId: null,
+      lessonName: null,
+      nextLessonName: null,
+      root,
+      onNextKey: followNextKey,
+      onScored: saveAndRefresh,
+    });
+    drillSection.hidden = false;
+    // Start it here rather than making the learner press a second button: they
+    // have already said "Start sprint", and the duration was set before that.
+    drillView.start();
+  }
+
+  /**
+   * A sprint that could not be built, reported without tearing the page down.
+   *
+   * `showError` hides every section, which is right for a layout that would not
+   * parse and wrong here: the lesson on screen is still perfectly good.
+   */
+  function showSprintError(message: string): void {
+    error.textContent = message;
+    error.hidden = false;
   }
 
   /**
@@ -286,6 +361,15 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
     // actually produce: an imported file may have come from a longer one.
     const current = lessons[Math.min(Math.max(0, session.progress.lesson), lessons.length - 1)];
     showDrill(keymap, current ?? null, nextAfter(lessons, current ?? null), lessons);
+
+    sprintControls?.destroy();
+    sprintControls = createSprintControls({
+      root,
+      onStart: (limitMs): void => {
+        showSprint(keymap, lessons, limitMs);
+      },
+    });
+    sprintSection.hidden = false;
   }
 
   function clearError(): void {

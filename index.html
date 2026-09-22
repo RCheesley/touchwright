@@ -83,6 +83,18 @@
           <button id="drill-reset" type="button" class="button button-outline">Start over</button>
         </p>
         <p id="drill-next" class="drill-next"></p>
+        <!--
+          The sprint countdown.
+
+          It sits here, directly above the text, because that is where the eyes
+          already are; the control that sets it lives in its own section below.
+
+          role="timer" carries an implicit aria-live of "off", which is the
+          point: the number changes every second and a region that announced it
+          would be unusable. The other channel is #sprint-warning below, a polite
+          region written only at a handful of milestones.
+        -->
+        <p id="sprint-countdown" class="sprint-countdown" role="timer" hidden></p>
         <div
           id="drill-surface"
           class="drill-surface"
@@ -97,6 +109,7 @@
           Escape releases the keyboard from anywhere in the drill.
         </p>
         <p id="drill-capture" class="drill-hint" role="status" aria-live="polite"></p>
+        <p id="sprint-warning" class="drill-hint" role="status" aria-live="polite"></p>
         <p id="drill-progress" class="drill-progress" role="status" aria-live="polite"></p>
         <p id="drill-error" class="drill-error" role="alert" hidden></p>
 
@@ -110,6 +123,38 @@
             <span class="drill-hint">Or press any key to start the next drill.</span>
           </p>
         </div>
+      </section>
+
+      <!--
+        Sprint mode.
+
+        It comes after the drill section for the same reason the ladder does: the
+        first few tab stops on the page have to reach the drill controls, and a
+        duration control between the file input and "Start drill" would take one
+        of them.
+
+        WCAG 2.2.1 applies here and the exemption is not claimed. The duration is
+        adjustable before a sprint starts, the current setting is stated in words
+        under the control rather than only shown as a selected option, and one of
+        the options is untimed and genuinely never expires.
+      -->
+      <section id="sprint-section" aria-labelledby="sprint-heading" hidden>
+        <h2 id="sprint-heading">Sprint</h2>
+        <p id="sprint-intro">
+          A timed run across every key you have unlocked so far, rather than one lesson. It measures
+          where you are, so it earns no stars. Escape gives the keyboard back mid-sprint, as it does
+          everywhere else.
+        </p>
+        <p>
+          <label class="field">
+            <span>How long the sprint runs</span>
+            <select id="sprint-duration"></select>
+          </label>
+        </p>
+        <p id="sprint-setting" class="drill-hint"></p>
+        <p class="drill-controls">
+          <button id="sprint-start" type="button" class="button button-solid">Start sprint</button>
+        </p>
       </section>
 
       <!--

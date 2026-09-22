@@ -24,10 +24,14 @@
  * nothing in this module moves focus except in response to Escape or a click, and
  * nothing listens for focus leaving in order to pull it back.
  *
- * No timer lives here either. The engine owns no interval and neither does this:
- * elapsed time is driven by calling `checkTimeLimit()` on each keystroke, which
- * is all an untimed drill needs. Sprint mode's wall-clock tick arrives with the
- * sprint work, and when it does it belongs in this module, not in the engine.
+ * **The engine owns no timer, and neither does this.** Elapsed time is driven by
+ * calling `checkTimeLimit()` on each keystroke, which is all a lesson needs. A
+ * sprint also needs a wall clock, because its limit can run out while nobody is
+ * typing, so this module — never the engine — schedules one. It does it through
+ * `startSprintTimer`, which captures the drill it is for and compares it by
+ * identity on every tick, so a timer this module forgets to stop can still only
+ * ever act on its own drill. That is regression 3, and the binding is structural
+ * rather than a teardown anyone has to remember.
  */
 
 import { describeKey, indexKeys, type BoardDefinition, type KeyPosition } from '../board/types.js';
@@ -41,7 +45,15 @@ import {
   type DrillSession,
   type Mark,
 } from '../drill/index.js';
+import { describeLimit } from '../drill/limits.js';
 import { scoreDrill, type DrillMode, type DrillScore } from '../drill/scoring.js';
+import {
+  createSprintWarnings,
+  describeCountdown,
+  startSprintTimer,
+  type SprintTimer,
+  type SprintWarnings,
+} from '../drill/sprint.js';
 import type { Keymap } from '../keymap/types.js';
 import { keyStatId } from '../stats/storage.js';
 import { required } from './dom.js';
@@ -63,6 +75,20 @@ export const SAMPLE_DRILL_TEXT = 'ask a task; a lad had a flask.';
 /** Class names the stylesheet and the tests both rely on. */
 export const DRILL_WORD_CLASS = 'drill-word';
 export const DRILL_CHAR_CLASS = 'drill-char';
+
+/**
+ * How often a running sprint looks at the clock. A second, because the countdown
+ * is shown to the second and a faster tick would only burn battery.
+ */
+export const SPRINT_TICK_MS = 1000;
+
+/** The default schedule: a plain interval, and the cancel that clears it. */
+function intervalSchedule(tick: () => void): () => void {
+  const id = setInterval(tick, SPRINT_TICK_MS);
+  return (): void => {
+    clearInterval(id);
+  };
+}
 
 /**
  * A drill text that this layout cannot type. Thrown rather than dropping the
@@ -133,6 +159,15 @@ export interface DrillViewOptions {
    * called for an unfinished drill.
    */
   readonly onScored?: (scored: ScoredDrill) => void;
+  /**
+   * Starts the sprint countdown's repeating tick and returns the function that
+   * cancels it. Defaults to `setInterval` at `SPRINT_TICK_MS`.
+   *
+   * Injected so that a test can step the clock itself and assert what the timer
+   * did, rather than waiting a real second for it. A schedule is only ever asked
+   * for in sprint mode; a lesson never creates one.
+   */
+  readonly schedule?: (tick: () => void) => () => void;
   readonly root?: ParentNode;
 }
 
@@ -291,6 +326,8 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     capture: required('#drill-capture', HTMLElement, root),
     progress: required('#drill-progress', HTMLElement, root),
     error: required('#drill-error', HTMLElement, root),
+    countdown: required('#sprint-countdown', HTMLElement, root),
+    timeWarning: required('#sprint-warning', HTMLElement, root),
     result: required('#drill-result', HTMLElement, root),
     resultSummary: required('#drill-result-summary', HTMLElement, root),
     resultDetail: required('#drill-result-detail', HTMLElement, root),
@@ -312,10 +349,22 @@ export function createDrillView(options: DrillViewOptions): DrillView {
   const session =
     options.session ?? createDrillSession(options.now === undefined ? {} : { now: options.now });
 
+  const schedule = options.schedule ?? intervalSchedule;
+
   let drill: Drill | null = null;
   let rendered = renderDrillText(options.text);
   let captured = false;
   let announcedWord = -1;
+  /**
+   * The sprint's wall clock, and the milestones it announces.
+   *
+   * There is at most one, it belongs to exactly one drill, and it is replaced
+   * rather than added to. Even so, nothing below relies on this variable being
+   * tidied up: the timer stops itself as soon as the drill it was started for is
+   * no longer the current one, which is the guarantee regression 3 needs.
+   */
+  let timer: SprintTimer | null = null;
+  let warnings: SprintWarnings | null = null;
 
   /**
    * Every character has to be typeable on this keyboard before the drill starts.
@@ -392,6 +441,76 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     el.surface.dataset['captured'] = captured ? 'true' : 'false';
   }
 
+  /** The drill mode named in words, so the result card says what it was. */
+  function describeMode(): string {
+    if (mode === 'sprint') {
+      return `sprint across every unlocked key, ${describeLimit(limitMs)}`;
+    }
+    if (mode === 'repair') return 'repair drill';
+    return lessonName === null ? 'lesson' : `lesson: ${lessonName}`;
+  }
+
+  /**
+   * The countdown, and the milestone announcements beside it.
+   *
+   * Two channels on purpose. The readout is a `role="timer"`, whose implicit
+   * live setting is off, so the second-by-second number is never announced; the
+   * polite region is written only when `warnings` says a milestone has been
+   * crossed, which is a handful of times per sprint at most. WCAG 2.2.1 asks for
+   * the limit to be knowable without watching a number tick down.
+   */
+  function paintCountdown(remaining: number | null): void {
+    if (mode !== 'sprint') return;
+    el.countdown.textContent = describeCountdown(remaining);
+    el.countdown.hidden = false;
+    const warning = warnings?.due(remaining) ?? null;
+    if (warning !== null) el.timeWarning.textContent = warning;
+  }
+
+  function hideCountdown(): void {
+    el.countdown.hidden = true;
+    el.countdown.textContent = '';
+    el.timeWarning.textContent = '';
+  }
+
+  /**
+   * Stop whatever timer is running, if one is.
+   *
+   * Deliberately not the thing that makes this safe. A teardown that is missed
+   * is exactly how regression 3 happened, so the timer also stops itself the
+   * moment its own drill stops being the current one. This is the tidy path; the
+   * identity check in `startSprintTimer` is the guarantee.
+   */
+  function stopTimer(): void {
+    timer?.stop();
+    timer = null;
+  }
+
+  /**
+   * Give this drill, and only this drill, a wall clock.
+   *
+   * `currentDrill` reads the view's own `drill` variable, so the moment
+   * `startDrill` replaces it — or anything else abandons it — the tick sees a
+   * different object and the timer takes itself out of the world without
+   * touching the new drill.
+   */
+  function startTimer(current: Drill): void {
+    stopTimer();
+    warnings = createSprintWarnings(limitMs);
+    timer = startSprintTimer({
+      drill: current,
+      currentDrill: () => drill,
+      schedule,
+      onTick: (remaining) => {
+        paintCountdown(remaining);
+      },
+      onExpire: (result, expiredDrill) => {
+        finish(expiredDrill, result);
+      },
+    });
+    paintCountdown(current.remainingMs());
+  }
+
   function paintMarks(current: Drill | null): void {
     const marks: readonly Mark[] = current?.marks ?? [];
     const cursor = current === null || current.isFinished ? -1 : current.cursor;
@@ -444,7 +563,11 @@ export function createDrillView(options: DrillViewOptions): DrillView {
   function render(): void {
     paintMarks(drill);
     describeNext(drill);
-    if (drill !== null && !drill.isFinished) announceWord(drill);
+    if (drill === null || drill.isFinished) return;
+    announceWord(drill);
+    // Between ticks as well as on them, so the readout answers to the keystroke
+    // that was just typed rather than lagging up to a second behind it.
+    paintCountdown(drill.remainingMs());
   }
 
   /**
@@ -492,6 +615,12 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     return [['Best on this lesson', starWords(scored.bestStars)]];
   }
 
+  /** How the assertive summary opens. A sprint says so; a lesson reads as before. */
+  function completionLead(completed: boolean): string {
+    if (mode === 'sprint') return completed ? 'Sprint complete' : 'Sprint over, time up';
+    return completed ? 'Drill complete' : 'Time up';
+  }
+
   function showResult(current: Drill, result: DrillResult): void {
     const score: DrillScore = scoreDrill({
       mode,
@@ -517,6 +646,10 @@ export function createDrillView(options: DrillViewOptions): DrillView {
       ],
       ['Stars', mode === 'lesson' ? starWords(score.stars) : 'none, this was not a lesson'],
       ['Experience', `${score.experienceGained} XP`],
+      // Named rather than left to be inferred from the star row: "the result
+      // distinguishes a sprint from a lesson" is an acceptance criterion, and
+      // "none, this was not a lesson" says what it was not, never what it was.
+      ['Drill', describeMode()],
       ['Ended', result.completed ? 'you typed it through' : 'the time limit ran out'],
       ...bestStarsRow(recorded),
     ];
@@ -541,16 +674,22 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     // Unhidden first, then written, so the assertive region announces the result
     // once rather than announcing an empty region and then its contents.
     el.resultSummary.textContent =
-      `${result.completed ? 'Drill complete' : 'Time up'}. ` +
+      `${completionLead(result.completed)}. ` +
       `${score.wordsPerMinute} words per minute, ${percentage(score.accuracy)} accuracy` +
       `${mode === 'lesson' ? `, ${starWords(score.stars)}` : ''}. ` +
       `Next: ${score.nextStep.label}. ${score.nextStep.why}`;
 
-    el.start.textContent = 'Start another drill';
+    el.start.textContent = mode === 'sprint' ? 'Start another sprint' : 'Start another drill';
   }
 
   function finish(current: Drill, result: DrillResult): void {
+    // Before anything is rendered: a finished drill has no time left to count,
+    // and a tick landing mid-render would only repaint a dead countdown.
+    stopTimer();
     render();
+    if (mode === 'sprint') {
+      el.countdown.textContent = describeCountdown(result.completed ? current.remainingMs() : 0);
+    }
     showResult(current, result);
   }
 
@@ -579,7 +718,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     }
 
     if (drill !== null && !drill.isFinished) {
-      el.start.textContent = 'Resume drill';
+      el.start.textContent = mode === 'sprint' ? 'Resume sprint' : 'Resume drill';
     }
   }
 
@@ -587,13 +726,23 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     checkTypeable(options.text);
     clearError();
     hideResult();
+    // The outgoing drill is abandoned here, so its timer goes with it. Even if
+    // this line were lost, the old timer could not touch the new drill: it
+    // compares the drill it captured with the current one and stops instead.
+    stopTimer();
+    hideCountdown();
     announcedWord = -1;
     const drillOptions: DrillOptions = { text: options.text, limitMs };
     drill = session.start(drillOptions);
     mountText(options.text);
-    el.start.textContent = 'Resume drill';
+    el.start.textContent = mode === 'sprint' ? 'Resume sprint' : 'Resume drill';
+    if (mode === 'sprint') startTimer(drill);
     render();
-    announce(`Drill ready: ${rendered.wordTexts.length} words. Type what you see.`);
+    announce(
+      mode === 'sprint'
+        ? `Sprint ready: ${rendered.wordTexts.length} words, ${describeLimit(limitMs)}. Type what you see.`
+        : `Drill ready: ${rendered.wordTexts.length} words. Type what you see.`,
+    );
     focusSurface();
   }
 
@@ -720,6 +869,12 @@ export function createDrillView(options: DrillViewOptions): DrillView {
   mountText(options.text);
   hideResult();
   clearError();
+  // A fresh view owns the countdown whether or not it is a sprint: a lesson
+  // built over an abandoned sprint must not leave that sprint's clock on screen.
+  hideCountdown();
+  // And it owns the start button's wording for the same reason. A lesson built
+  // after a sprint was abandoned must not still be offering to resume it.
+  el.start.textContent = mode === 'sprint' ? 'Restart this sprint' : 'Start drill';
   setCaptureState('');
   render();
 
@@ -733,6 +888,7 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     start: startDrill,
     release,
     destroy(): void {
+      stopTimer();
       release('teardown');
       el.start.removeEventListener('click', onStartClick);
       el.reset.removeEventListener('click', startDrill);
