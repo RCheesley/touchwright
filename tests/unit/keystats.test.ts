@@ -19,7 +19,9 @@ import {
   fingerLabel,
   InvalidThresholdsError,
   rowLabel,
+  selectWeakKeys,
   summariseKeyStats,
+  weakKeyCharacters,
   WEAK_KEY_THRESHOLDS,
   type FingerGroup,
   type RowGroup,
@@ -263,5 +265,57 @@ describe('the words the grouping is stated in', () => {
   it('labels a finger by hand, and never says "thumb finger"', () => {
     expect(fingerLabel('left', 'ring')).toBe('left ring finger');
     expect(fingerLabel('right', 'thumb')).toBe('right thumb');
+  });
+});
+
+describe('selecting the keys a repair drill should be built from', () => {
+  it('flattens the grouping into a list, worst first', () => {
+    // p is missed half the time, m one press in five, . not at all.
+    const grouped = report({ p: [5, 5], m: [16, 4], '.': [20, 0] });
+    expect(weakKeyCharacters(grouped)).toEqual(['p', 'm']);
+    expect(selectWeakKeys(grouped)[0]?.summary).toBe('“p”, 5 of 10 presses missed, 50%');
+  });
+
+  it('does not call a key weak on the strength of one miss', () => {
+    // One miss of three presses is half the miss rate of p above and still not
+    // a conclusion: WEAK_KEY_THRESHOLDS.minAttempts is four.
+    const grouped = report({ q: [2, 1], p: [5, 5] });
+    expect(WEAK_KEY_THRESHOLDS.minAttempts).toBe(4);
+    expect(weakKeyCharacters(grouped)).toEqual(['p']);
+
+    // A fourth press is the point at which it becomes evidence.
+    expect(weakKeyCharacters(report({ q: [3, 1] }))).toEqual(['q']);
+  });
+
+  it('leaves the keys that are only worth watching out unless asked', () => {
+    // m is missed one press in ten: worth watching, not worth a repair drill.
+    const grouped = report({ p: [5, 5], m: [18, 2] });
+    expect(weakKeyCharacters(grouped)).toEqual(['p']);
+    expect(weakKeyCharacters(grouped, { includeWatch: true })).toEqual(['p', 'm']);
+  });
+
+  it('takes the worst few when a caller has only so much room', () => {
+    const grouped = report({ p: [1, 9], m: [5, 5], q: [8, 2] });
+    expect(weakKeyCharacters(grouped, { limit: 2 })).toEqual(['p', 'm']);
+    expect(weakKeyCharacters(grouped, { limit: 0 })).toEqual([]);
+  });
+
+  it('is stable when two keys are as bad as each other', () => {
+    const grouped = report({ m: [5, 5], p: [5, 5] });
+    expect(weakKeyCharacters(grouped)).toEqual(['m', 'p']);
+  });
+
+  it('refuses a limit it cannot use rather than guessing one', () => {
+    const grouped = report({ p: [5, 5] });
+    expect(() => selectWeakKeys(grouped, { limit: -1 })).toThrow(RangeError);
+    expect(() => selectWeakKeys(grouped, { limit: 1.5 })).toThrow(RangeError);
+  });
+
+  it('never offers a key this layout cannot place', () => {
+    // A statistic carried over from another layout has no finger and no row, so
+    // it is reported in `unplaced` and never lands in a drill.
+    const grouped = report({ '€': [1, 9], p: [5, 5] });
+    expect(grouped.unplaced.map((key) => key.character)).toEqual(['€']);
+    expect(weakKeyCharacters(grouped)).toEqual(['p']);
   });
 });
