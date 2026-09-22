@@ -16,9 +16,9 @@ The first supported combination is the Maltron layout on a MoErgo Glove80. The
 architecture does not assume it: board geometry and the lesson ladder are data, so
 adding a second board is a config file rather than a rewrite.
 
-> **Status: early.** The layout parser, the board geometry and the persistence
-> layer are built and tested. The board render, the lesson ladder and the drill
-> itself are not. See [Where this is up to](#where-this-is-up-to).
+> **Status: it works.** Load a layout, and it generates a lesson ladder from
+> your own keymap and drills you on it — reporting weak keys by finger and row.
+> Repair drills, sprint mode and a screen-reader pass are still to come.
 
 ## Exporting your layout
 
@@ -112,44 +112,43 @@ matters here, so there is a manual checklist:
 
 ## Where this is up to
 
-Built and tested:
+Working today:
 
-- Glove80 geometry, pinned by 40-odd assertions including a single-mirror-axis
-  invariant across all 80 positions.
-- MoErgo layout export parsing, with the host locale driving shift pairing, and
-  validation that refuses untrusted input with a message you can act on.
-- Progress persistence behind a narrow storage interface, with JSON export and
-  import.
-- Drill time limits, where untimed is a real state rather than a zero.
-- WCAG contrast maths, checked against computed styles in both themes.
+- A lesson ladder **generated from your layout**, not hand-written for it. For
+  the Maltron reference layout the keywell order comes out identical to a
+  hand-authored ladder, derived rather than copied; the three places it
+  deliberately differs are defended in [docs/ladder.md](docs/ladder.md).
+- Drill text built from each lesson's own key set, so you are never shown a key
+  the ladder has not given you yet.
+- A drill surface with escapable keyboard capture, scoring, stars, and
+  advancement through the ladder.
+- The board drawn from its own geometry, with the next key named in words first
+  and highlighted second.
+- Weak keys grouped **by finger and row** rather than by letter — the thing the
+  architecture exists for.
+- Progress saved, exported and imported as JSON.
 
-Not built yet — and this is the honest state of it: **you can load a layout and
-see what it found, but you cannot yet type against it.**
+Still to come, all tracked below: repair drills, sprint mode, and a screen
+reader pass that a person has to do.
 
-Of the eight regressions in `tests/regression/`, four are asserted and four are
-named `todo` with their acceptance criteria written out. They are filled in as
-the features they guard land, never afterwards.
+Seven of the eight regressions in `tests/regression/` are asserted. The last is
+the orphaned sprint timer, which lands with sprint mode. Each is filled in with
+the feature it guards, never afterwards.
 
 ## Roadmap
 
-Everything left for version one is tracked as an issue, in dependency order.
+Everything left for version one is tracked as an issue. Issues #1 to #6 and #9
+are done.
 
-| Issue                                                     | What                                      | Needs  |
-| --------------------------------------------------------- | ----------------------------------------- | ------ |
-| [#1](https://github.com/RCheesley/touchwright/issues/1)   | Generate the lesson ladder                | —      |
-| [#2](https://github.com/RCheesley/touchwright/issues/2)   | Drill engine, a pure state machine        | —      |
-| [#4](https://github.com/RCheesley/touchwright/issues/4)   | Scoring: wpm, accuracy, xp, stars         | —      |
-| [#5](https://github.com/RCheesley/touchwright/issues/5)   | Render the board as SVG                   | —      |
-| [#3](https://github.com/RCheesley/touchwright/issues/3)   | Drill text: clusters, words, prose        | #1     |
-| [#6](https://github.com/RCheesley/touchwright/issues/6)   | Drill surface, escapable keyboard capture | #2, #5 |
-| [#7](https://github.com/RCheesley/touchwright/issues/7)   | Per-key statistics and repair drills      | #2, #3 |
-| [#8](https://github.com/RCheesley/touchwright/issues/8)   | Sprint mode, adjustable and disableable   | #2, #3 |
-| [#9](https://github.com/RCheesley/touchwright/issues/9)   | Ladder, statistics, export and import     | #1, #4 |
-| [#10](https://github.com/RCheesley/touchwright/issues/10) | Usable with a screen reader               | #6     |
+| Issue                                                     | What                                       |
+| --------------------------------------------------------- | ------------------------------------------ |
+| [#7](https://github.com/RCheesley/touchwright/issues/7)   | Repair drills built from the keys you miss |
+| [#8](https://github.com/RCheesley/touchwright/issues/8)   | Sprint mode, adjustable and disableable    |
+| [#10](https://github.com/RCheesley/touchwright/issues/10) | Usable with a screen reader                |
 
-[#1](https://github.com/RCheesley/touchwright/issues/1) is the only one with real
-design risk: the brief requires the generated ladder to match the prototype's
-hand-authored one or to differ only in documented, defended ways.
+[#8](https://github.com/RCheesley/touchwright/issues/8) owns the last unguarded
+regression: a sprint timer that outlived its drill and then killed every drill
+after it.
 
 [#10](https://github.com/RCheesley/touchwright/issues/10) is marked help wanted.
 If you use a screen reader, that feedback is worth more than anything the tooling
