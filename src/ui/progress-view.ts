@@ -47,7 +47,7 @@ import {
   type WeakKey,
 } from '../stats/keystats.js';
 import type { ProgressStore } from '../stats/storage.js';
-import { describeFailure, required } from './dom.js';
+import { describeFailure, required, announceInto } from './dom.js';
 
 /** Stars a lesson can be worth. The ladder shows all three, earned or not. */
 export const MAX_STARS = 3;
@@ -562,7 +562,10 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
       showError(`That export did not happen: ${describeFailure(cause)}`);
       return;
     }
-    el.status.textContent = `Exported ${fileName}. Keep it somewhere you will find it again; importing it restores your progress in any browser.`;
+    announceInto(
+      el.status,
+      `Exported ${fileName}. Keep it somewhere you will find it again; importing it restores your progress in any browser.`,
+    );
   }
 
   function onClear(): void {
@@ -571,8 +574,10 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
       clearArmed = true;
       el.clearButton.textContent = CLEAR_CONFIRM_LABEL;
       el.clearButton.dataset['armed'] = 'true';
-      el.status.textContent =
-        'This will delete the progress saved in this browser, and it cannot be undone. Choose the button again to confirm, or press Escape to cancel. Export first if you want to keep it.';
+      announceInto(
+        el.status,
+        'This will delete the progress saved in this browser, and it cannot be undone. Choose the button again to confirm, or press Escape to cancel. Export first if you want to keep it.',
+      );
       return;
     }
 
@@ -594,14 +599,16 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
     progress.keyStats = {};
 
     refresh();
-    el.status.textContent =
-      'Saved progress cleared. The ladder is back at the first lesson and the statistics are empty.';
+    announceInto(
+      el.status,
+      'Saved progress cleared. The ladder is back at the first lesson and the statistics are empty.',
+    );
   }
 
   function onClearKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Escape' || !clearArmed) return;
     disarmClear();
-    el.status.textContent = 'Clearing cancelled. Your saved progress is untouched.';
+    announceInto(el.status, 'Clearing cancelled. Your saved progress is untouched.');
   }
 
   /**
@@ -658,7 +665,7 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
         `${warnings.length} ${warnings.length === 1 ? 'part' : 'parts'} of it could not be read and ${warnings.length === 1 ? 'was' : 'were'} dropped; the rest was kept.`,
       );
     }
-    el.status.textContent = parts.join(' ');
+    announceInto(el.status, parts.join(' '));
 
     showWarnings(
       warnings.length === 1
@@ -676,7 +683,7 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
       el.status.textContent = '';
       return;
     }
-    el.status.textContent = `Reading ${file.name}…`;
+    announceInto(el.status, `Reading ${file.name}…`);
     void importFile(file);
   }
 
@@ -694,10 +701,12 @@ export function createProgressView(options: ProgressViewOptions): ProgressView {
   // rather than being overwritten by the first render.
   const startupWarnings = options.startupWarnings ?? [];
   if (startupWarnings.length > 0) {
-    el.status.textContent =
+    announceInto(
+      el.status,
       startupWarnings.length === 1
         ? 'One part of the progress saved in this browser could not be read. Everything else was kept.'
-        : `${startupWarnings.length} parts of the progress saved in this browser could not be read. Everything else was kept.`;
+        : `${startupWarnings.length} parts of the progress saved in this browser could not be read. Everything else was kept.`,
+    );
     showWarnings('From the progress saved in this browser:', startupWarnings);
   }
 

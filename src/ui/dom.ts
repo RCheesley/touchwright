@@ -35,3 +35,27 @@ export function describeFailure(cause: unknown): string {
   if (cause instanceof Error) return cause.message;
   return 'Something went wrong.';
 }
+
+/**
+ * Says something in a live region, in a way that a repeat is still heard.
+ *
+ * A live region speaks when its contents change. Setting it to the string it
+ * already holds changes nothing, so an assistive technology has nothing to
+ * notice and the message is silent. That matters here because the messages most
+ * likely to repeat are the ones a learner most needs: mistyping the same key
+ * twice in a row produces the same sentence twice, and the second one would
+ * never be spoken.
+ *
+ * A single trailing space is toggled so that consecutive identical messages are
+ * always a real change. A trailing space is chosen over a zero-width space
+ * because it cannot be mistaken for a character and read out; it is invisible in
+ * the rendering either way.
+ *
+ * Whether every screen reader treats a whitespace-only difference as a change is
+ * not something we can assert from here. docs/screen-reader-testing.md asks
+ * testers to confirm it, and it is the reason that document exists.
+ */
+export function announceInto(region: HTMLElement, message: string): void {
+  const previous = region.textContent;
+  region.textContent = previous === message ? `${message} ` : message;
+}
