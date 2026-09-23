@@ -20,6 +20,8 @@ import {
   KeystrokeHandlerError,
 } from '../../src/drill/engine.js';
 import { hasReachedLimit, NO_LIMIT } from '../../src/drill/limits.js';
+import { startSprintTimer } from '../../src/drill/sprint.js';
+import type { Drill } from '../../src/drill/types.js';
 import {
   emptyProgress,
   keyStatId,
@@ -333,9 +335,137 @@ describe('regression 3: timers must not outlive their drill', () => {
     expect(hasReachedLimit(Number.MAX_SAFE_INTEGER, NO_LIMIT)).toBe(false);
   });
 
-  it.todo('clears a sprint timer when the sprint is abandoned');
-  it.todo('lets a lesson run normally after a sprint was started and abandoned');
-  it.todo('never lets a timer act on a drill other than the one it was started for');
+  /**
+   * A schedule a test fires by hand, standing in for `setInterval`.
+   *
+   * `live` is the whole point: a timer that has stopped must leave nothing
+   * behind that anything can fire again, and a cancel that never arrived is
+   * exactly what the prototype shipped.
+   */
+  function manualSchedule() {
+    const ticks = new Set<() => void>();
+    // An arrow rather than a method, so it can be handed straight to the timer.
+    const schedule = (tick: () => void): (() => void) => {
+      ticks.add(tick);
+      return (): void => {
+        ticks.delete(tick);
+      };
+    };
+    return {
+      schedule,
+      fire(): void {
+        for (const tick of [...ticks]) tick();
+      },
+      get live(): number {
+        return ticks.size;
+      },
+    };
+  }
+
+  it('clears a sprint timer when the sprint is abandoned', () => {
+    const clock = testClock();
+    const schedule = manualSchedule();
+    const sprint = createDrill({ text: 'ask a task', limitMs: 30_000, now: clock.now });
+    sprint.press('a');
+
+    let current: Drill | null = sprint;
+    const timer = startSprintTimer({
+      drill: sprint,
+      currentDrill: () => current,
+      schedule: schedule.schedule,
+    });
+
+    expect(schedule.live).toBe(1);
+
+    // Abandoned: the learner walked away and something else became current.
+    current = null;
+    clock.advance(60_000);
+    schedule.fire();
+
+    expect(timer.stopped).toBe(true);
+    expect(timer.stopReason).toBe('abandoned');
+    // Nothing is left that could be fired again, so there is no second chance
+    // for it to act on anything.
+    expect(schedule.live).toBe(0);
+  });
+
+  it('lets a lesson run normally after a sprint was started and abandoned', () => {
+    const clock = testClock();
+    const schedule = manualSchedule();
+
+    const sprint = createDrill({ text: 'ask a task', limitMs: 30_000, now: clock.now });
+    sprint.press('a');
+    let current: Drill = sprint;
+    startSprintTimer({
+      drill: sprint,
+      currentDrill: () => current,
+      schedule: schedule.schedule,
+    });
+
+    // The sprint is abandoned for an untimed lesson, which is the drill that
+    // used to die on its very first keystroke.
+    const lesson = createDrill({ text: 'ask a task', limitMs: NO_LIMIT, now: clock.now });
+    current = lesson;
+
+    // Time enough to have expired the sprint several times over.
+    clock.advance(120_000);
+    schedule.fire();
+
+    const first = lesson.press('a');
+    expect(first.kind).toBe('correct');
+    expect(lesson.isFinished).toBe(false);
+
+    // And it keeps going, all the way through, with the clock far past any
+    // limit the abandoned sprint ever had.
+    for (const character of [...'sk a task'.slice(0)]) {
+      clock.advance(10_000);
+      schedule.fire();
+      lesson.press(character);
+    }
+
+    expect(lesson.isFinished).toBe(true);
+    expect(lesson.result?.completed).toBe(true);
+    expect(lesson.result?.totalKeystrokes).toBe(10);
+  });
+
+  it('never lets a timer act on a drill other than the one it was started for', () => {
+    const clock = testClock();
+    const schedule = manualSchedule();
+
+    const sprint = createDrill({ text: 'ask a task', limitMs: 30_000, now: clock.now });
+    sprint.press('a');
+    const other = createDrill({ text: 'ask a task', limitMs: 30_000, now: clock.now });
+    other.press('a');
+
+    let current: Drill = sprint;
+    const acted: string[] = [];
+    const timer = startSprintTimer({
+      drill: sprint,
+      currentDrill: () => current,
+      schedule: schedule.schedule,
+      onTick: (_remaining, drill) => acted.push(drill === sprint ? 'sprint' : 'other'),
+      onExpire: (_result, drill) => acted.push(drill === sprint ? 'sprint-end' : 'other-end'),
+    });
+
+    clock.advance(1_000);
+    schedule.fire();
+    expect(acted).toEqual(['sprint']);
+
+    // The current drill is swapped for another one that is itself timed, and
+    // has been running long enough to be over its own limit. If the timer read
+    // "whichever drill is current" it would end this one; it must not.
+    current = other;
+    clock.advance(60_000);
+    schedule.fire();
+    schedule.fire();
+
+    expect(timer.stopReason).toBe('abandoned');
+    expect(acted).toEqual(['sprint']);
+    expect(other.isFinished).toBe(false);
+    expect(other.result).toBeNull();
+    // The timer still names the one drill it was ever allowed to touch.
+    expect(timer.drill).toBe(sprint);
+  });
 });
 
 describe('regression 4: a finished drill must never swallow input', () => {

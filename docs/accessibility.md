@@ -11,22 +11,24 @@ see most of what matters here, so the manual checklist below is the real test.
 
 ## Automated coverage
 
-| What                                                    | Where                                 |
-| ------------------------------------------------------- | ------------------------------------- |
-| Axe, WCAG 2.0/2.1/2.2 A and AA rules                    | `tests/e2e/load-layout.spec.ts`       |
-| Contrast, both themes, computed styles                  | `tests/e2e/contrast.spec.ts`          |
-| Contrast maths                                          | `tests/unit/contrast.test.ts`         |
-| Reflow at 320, 600 and 1280 px                          | `tests/e2e/reflow.spec.ts`            |
-| Visible focus ring                                      | `tests/e2e/load-layout.spec.ts`       |
-| Keyboard-only reachability                              | `tests/e2e/load-layout.spec.ts`       |
-| Adjustable and disableable time limits                  | `tests/unit/limits.test.ts`           |
-| Escape releases capture, and Tab still moves focus      | `tests/e2e/pending.spec.ts`           |
-| Marks told apart by decoration, not colour alone        | `tests/e2e/drill.spec.ts`             |
-| The drill surface's name and its description            | `tests/e2e/drill.spec.ts`             |
-| Words never broken across lines, at three widths        | `tests/e2e/drill.spec.ts`             |
-| Both button variants, both themes                       | `tests/e2e/drill.spec.ts`             |
-| Nothing moves on the drill surface under reduced motion | `tests/e2e/drill.spec.ts`             |
-| Drill text, marks, capture and result behaviour         | `tests/functional/drill-view.test.ts` |
+| What                                                    | Where                                         |
+| ------------------------------------------------------- | --------------------------------------------- |
+| Axe, WCAG 2.0/2.1/2.2 A and AA rules                    | `tests/e2e/load-layout.spec.ts`               |
+| Contrast, both themes, computed styles                  | `tests/e2e/contrast.spec.ts`                  |
+| Contrast maths                                          | `tests/unit/contrast.test.ts`                 |
+| Reflow at 320, 600 and 1280 px                          | `tests/e2e/reflow.spec.ts`                    |
+| Visible focus ring                                      | `tests/e2e/load-layout.spec.ts`               |
+| Keyboard-only reachability                              | `tests/e2e/load-layout.spec.ts`               |
+| Adjustable and disableable time limits                  | `tests/unit/limits.test.ts`                   |
+| Sprint duration control, countdown and warnings         | `tests/e2e/sprint.spec.ts`                    |
+| A sprint timer never acting on another drill            | `tests/regression/prototype-failures.test.ts` |
+| Escape releases capture, and Tab still moves focus      | `tests/e2e/pending.spec.ts`                   |
+| Marks told apart by decoration, not colour alone        | `tests/e2e/drill.spec.ts`                     |
+| The drill surface's name and its description            | `tests/e2e/drill.spec.ts`                     |
+| Words never broken across lines, at three widths        | `tests/e2e/drill.spec.ts`                     |
+| Both button variants, both themes                       | `tests/e2e/drill.spec.ts`                     |
+| Nothing moves on the drill surface under reduced motion | `tests/e2e/drill.spec.ts`                     |
+| Drill text, marks, capture and result behaviour         | `tests/functional/drill-view.test.ts`         |
 
 ## Manual checklist
 
@@ -136,11 +138,34 @@ cannot be, so every item here still needs a manual pass.
 
 ### Timing
 
-Sprint mode imposes a limit, so WCAG 2.2.1 applies.
+Sprint mode imposes a limit, so WCAG 2.2.1 applies. The exemption for essential
+timing is deliberately not claimed: a sprint is a measurement, and a measurement
+someone cannot take is not essential to anything.
 
-- [ ] A duration control is offered.
-- [ ] An untimed option is offered, and it genuinely never expires.
-- [ ] The exemption for essential timing is not claimed.
+- [x] A duration control is offered, built from `SPRINT_DURATIONS_MS` so the
+      options and the durations cannot drift apart. **Automated** in
+      `tests/functional/sprint-view.test.ts` and `tests/e2e/sprint.spec.ts`.
+- [x] An untimed option is offered, and it genuinely never expires. **Automated**
+      three times over, at three scales: `hasReachedLimit` at
+      `Number.MAX_SAFE_INTEGER` in `tests/regression/prototype-failures.test.ts`,
+      a century of elapsed time through a running sprint timer in
+      `tests/unit/sprint.test.ts` and `tests/functional/sprint-view.test.ts`, and
+      an hour of faked wall clock in a real browser in
+      `tests/e2e/pending.spec.ts`.
+- [x] The limit is adjustable before the sprint starts, and the current setting
+      is stated in visible text rather than only shown as a selected option.
+      **Automated** in `tests/e2e/sprint.spec.ts`.
+- [x] The exemption for essential timing is not claimed.
+- [x] The countdown is visible while a timed sprint runs, and is a `role="timer"`
+      whose implicit live setting is off, so it is never announced per second.
+      **Automated** in `tests/functional/sprint-view.test.ts` and
+      `tests/e2e/sprint.spec.ts`.
+- [x] Time running out is announced politely at a handful of milestones — a
+      minute, thirty seconds, ten — so the countdown is never the only channel.
+      **Automated**: the count of announcements over a whole sprint is asserted,
+      in `tests/functional/sprint-view.test.ts`. Hearing it is still manual.
+- [ ] A sprint feels escapable to someone using a screen reader: the milestones
+      land without talking over the word announcements. Needs a person.
 
 ### Reflow and zoom
 
@@ -166,8 +191,8 @@ exists.
 - Screen reader testing is manual. There is no automated substitute. The regions,
   their roles and the text written into them are asserted, and that is as far as a
   test reaches: no test can hear VoiceOver or NVDA.
-- The sprint and ladder views do not exist yet, so the timing section is checked
-  only at the unit level, through `src/drill/limits.ts`.
+- The repair drill does not exist yet, so nothing checks what it says about the
+  keys it was built from.
 - Nothing yet checks the drill surface at 400 per cent zoom by hand. Reflow at 320
   CSS pixels is automated, which is the same measurement from the other side, but
   it is not the same experience.
