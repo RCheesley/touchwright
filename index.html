@@ -19,49 +19,56 @@
       </p>
     </header>
 
+    <nav id="section-nav" class="section-nav" aria-label="Sections" hidden>
+      <ul>
+        <li><a href="#drill-section">Practise</a></li>
+        <li><a href="#sprint-section">Sprint</a></li>
+        <li><a href="#ladder-section">Ladder</a></li>
+        <li><a href="#stats-section">Statistics</a></li>
+        <li><a href="#progress-section">Saving</a></li>
+      </ul>
+    </nav>
+
     <main id="main">
-      <section aria-labelledby="load-heading">
-        <h2 id="load-heading">Load your layout</h2>
-        <p>
-          Export your layout from the MoErgo Layout Editor and choose the file here. Nothing is
-          uploaded anywhere; the file is read in your browser.
-        </p>
-        <p>
-          <label class="field">
-            <span>Layout export (JSON)</span>
-            <input id="layout-file" type="file" accept="application/json,.json" />
-          </label>
-        </p>
-        <p id="layout-status" role="status" aria-live="polite"></p>
-        <div id="layout-error" role="alert" hidden></div>
-      </section>
+      <div class="setup">
+        <section aria-labelledby="load-heading" class="setup-load">
+          <h2 id="load-heading">Load your layout</h2>
+          <p id="load-intro">
+            Export your layout from the MoErgo Layout Editor and choose the file here. Nothing is
+            uploaded anywhere; the file is read in your browser.
+          </p>
+          <p>
+            <label class="field">
+              <span>Layout export (JSON)</span>
+              <input id="layout-file" type="file" accept="application/json,.json" />
+            </label>
+          </p>
+          <p id="layout-status" role="status" aria-live="polite"></p>
+          <div id="layout-error" role="alert" hidden></div>
+        </section>
 
-      <section id="summary" aria-labelledby="summary-heading" hidden>
-        <h2 id="summary-heading">What that layout looks like</h2>
-        <dl id="summary-list"></dl>
-      </section>
+        <section id="summary" aria-labelledby="summary-heading" hidden>
+          <h2 id="summary-heading">What that layout looks like</h2>
+          <dl id="summary-list"></dl>
+        </section>
+      </div>
 
-      <!--
-        The diagram is decorative reinforcement and is marked aria-hidden, so
-        everything it shows is stated here in text as well: the highlighted key in
-        #board-next, the finger colours in #board-legend, and every cap's hand,
-        finger and row in #board-key-list.
-      -->
-      <section id="board-section" aria-labelledby="board-heading" hidden>
-        <h2 id="board-heading">Where those keys are</h2>
-        <p id="board-next"></p>
-        <div id="board-figure"></div>
-        <p id="board-legend-intro">
-          Each cap is outlined in the colour of the finger that owns it.
-        </p>
-        <ul id="board-legend" class="board-legend"></ul>
-        <details id="board-key-detail" class="board-key-detail">
-          <summary>Every key on the board, in words</summary>
-          <ul id="board-key-list" class="board-key-list"></ul>
-        </details>
-      </section>
+      <div class="workspace">
+        <section id="board-section" aria-labelledby="board-heading" hidden>
+          <h2 id="board-heading">Where those keys are</h2>
+          <p id="board-next"></p>
+          <div id="board-figure"></div>
+          <p id="board-legend-intro">
+            Each cap is outlined in the colour of the finger that owns it.
+          </p>
+          <ul id="board-legend" class="board-legend"></ul>
+          <details id="board-key-detail" class="board-key-detail">
+            <summary>Every key on the board, in words</summary>
+            <ul id="board-key-list" class="board-key-list"></ul>
+          </details>
+        </section>
 
-      <!--
+        <!--
         The drill surface.
 
         How to escape the keyboard capture is stated here in visible text, not in
@@ -70,20 +77,20 @@
         row in words and is the primary channel; the board highlight above only
         reinforces it.
       -->
-      <section id="drill-section" aria-labelledby="drill-heading" hidden>
-        <h2 id="drill-heading">Practise</h2>
-        <p id="drill-how">
-          Choose <em>Start drill</em> and type what you see.
-          <strong>Press Escape at any time to give the keyboard back.</strong> The page then works
-          as usual, and <em>Resume drill</em> picks up exactly where you left off. Tab always moves
-          focus, even while the drill has the keyboard.
-        </p>
-        <p class="drill-controls">
-          <button id="drill-start" type="button" class="button button-solid">Start drill</button>
-          <button id="drill-reset" type="button" class="button button-outline">Start over</button>
-        </p>
-        <p id="drill-next" class="drill-next"></p>
-        <!--
+        <section id="drill-section" aria-labelledby="drill-heading" hidden>
+          <h2 id="drill-heading">Practise</h2>
+          <p id="drill-how">
+            Choose <em>Start drill</em> and type what you see.
+            <strong>Press Escape at any time to give the keyboard back.</strong> The page then works
+            as usual, and <em>Resume drill</em> picks up exactly where you left off. Tab always
+            moves focus, even while the drill has the keyboard.
+          </p>
+          <p class="drill-controls">
+            <button id="drill-start" type="button" class="button button-solid">Start drill</button>
+            <button id="drill-reset" type="button" class="button button-outline">Start over</button>
+          </p>
+          <p id="drill-next" class="drill-next"></p>
+          <!--
           The sprint countdown.
 
           It sits here, directly above the text, because that is where the eyes
@@ -94,36 +101,37 @@
           would be unusable. The other channel is #sprint-warning below, a polite
           region written only at a handful of milestones.
         -->
-        <p id="sprint-countdown" class="sprint-countdown" role="timer" hidden></p>
-        <div
-          id="drill-surface"
-          class="drill-surface"
-          tabindex="0"
-          role="group"
-          aria-label="Drill text"
-          aria-describedby="drill-next drill-escape"
-        >
-          <p id="drill-text" class="drill-text"></p>
-        </div>
-        <p id="drill-escape" class="drill-hint">
-          Escape releases the keyboard from anywhere in the drill.
-        </p>
-        <p id="drill-capture" class="drill-hint" role="status" aria-live="polite"></p>
-        <p id="sprint-warning" class="drill-hint" role="status" aria-live="polite"></p>
-        <p id="drill-progress" class="drill-progress" role="status" aria-live="polite"></p>
-        <p id="drill-error" class="drill-error" role="alert" hidden></p>
-
-        <div id="drill-result" class="drill-result" hidden>
-          <h3>How that went</h3>
-          <p id="drill-result-summary" class="drill-result-summary" role="alert"></p>
-          <dl id="drill-result-detail"></dl>
-          <p id="drill-result-why"></p>
-          <p class="drill-controls">
-            <button id="drill-continue" type="button" class="button button-solid"></button>
-            <span class="drill-hint">Or press any key to start the next drill.</span>
+          <p id="sprint-countdown" class="sprint-countdown" role="timer" hidden></p>
+          <div
+            id="drill-surface"
+            class="drill-surface"
+            tabindex="0"
+            role="group"
+            aria-label="Drill text"
+            aria-describedby="drill-next drill-escape"
+          >
+            <p id="drill-text" class="drill-text"></p>
+          </div>
+          <p id="drill-escape" class="drill-hint">
+            Escape releases the keyboard from anywhere in the drill.
           </p>
-        </div>
-      </section>
+          <p id="drill-capture" class="drill-hint" role="status" aria-live="polite"></p>
+          <p id="sprint-warning" class="drill-hint" role="status" aria-live="polite"></p>
+          <p id="drill-progress" class="drill-progress" role="status" aria-live="polite"></p>
+          <p id="drill-error" class="drill-error" role="alert" hidden></p>
+
+          <div id="drill-result" class="drill-result" hidden>
+            <h3>How that went</h3>
+            <p id="drill-result-summary" class="drill-result-summary" role="alert"></p>
+            <dl id="drill-result-detail"></dl>
+            <p id="drill-result-why"></p>
+            <p class="drill-controls">
+              <button id="drill-continue" type="button" class="button button-solid"></button>
+              <span class="drill-hint">Or press any key to start the next drill.</span>
+            </p>
+          </div>
+        </section>
+      </div>
 
       <!--
         Sprint mode.

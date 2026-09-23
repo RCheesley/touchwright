@@ -314,3 +314,28 @@ test('animates nothing on the drill surface when reduced motion is asked for', a
     0.05,
   );
 });
+
+test('the keyboard takes the same offer the button shows, not a fresh drill', async ({ page }) => {
+  // The result card can offer the next lesson or a repair drill. Pressing a key
+  // to continue used to go straight to "start this drill again", which silently
+  // threw that offer away -- a button saying one thing and the keyboard doing
+  // another is the same failure as a button that lies.
+  await startDrill(page);
+  await page.keyboard.type(expectedDrillText(), { delay: 15 });
+  await expect(page.locator('#drill-result')).toBeVisible();
+
+  // Typed cleanly and briskly, so this earns the advance rather than a repair.
+  await expect(page.locator('#drill-continue')).toContainText('Start');
+  const firstDrill = await page.locator('#drill-text').innerText();
+
+  // Past the grace period that stops an overrun keystroke skipping the result
+  // before it has been read -- regression 4, which refuses the key until then.
+  await page.waitForTimeout(600);
+
+  // Any key continues. It must do what the button says.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#drill-result')).toBeHidden();
+
+  // The next lesson was offered, so the text must be the next lesson's.
+  await expect(page.locator('#drill-text')).not.toHaveText(firstDrill);
+});
