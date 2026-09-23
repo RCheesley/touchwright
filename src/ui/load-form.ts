@@ -109,6 +109,8 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
   const legend = required('#board-legend', HTMLElement, root);
   const keyList = required('#board-key-list', HTMLElement, root);
   const drillSection = required('#drill-section', HTMLElement, root);
+  const sectionNav = required('#section-nav', HTMLElement, root);
+  const loadIntro = required('#load-intro', HTMLElement, root);
   const sprintSection = required('#sprint-section', HTMLElement, root);
   const ladderSection = required('#ladder-section', HTMLElement, root);
   const statsSection = required('#stats-section', HTMLElement, root);
@@ -458,6 +460,11 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
         // The ladder comes before the drill: it decides which lesson the drill is
         // for, and a drill with no lesson could not write its stars anywhere.
         showProgress(keymap);
+        // There is somewhere to go now, and the instructions have been followed,
+        // so one appears and the other stands down. The file input stays: a
+        // learner may want to load a different layout.
+        sectionNav.hidden = false;
+        loadIntro.hidden = true;
         status.textContent = `Loaded ${keymap.title}.`;
       } catch (cause) {
         // Surfaced, never swallowed: a parse failure is the user's problem to

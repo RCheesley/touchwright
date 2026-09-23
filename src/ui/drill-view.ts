@@ -831,7 +831,11 @@ export function createDrillView(options: DrillViewOptions): DrillView {
     if (current.isFinished) {
       if (!current.requestContinue(event.key).accepted) return;
       event.preventDefault();
-      startDrill();
+      // Through onContinue, not straight to startDrill: the result card may be
+      // offering the next lesson or a repair drill, and a keyboard learner must
+      // get the same thing the button offers. Going direct silently threw the
+      // offer away and started this drill again.
+      onContinue();
       return;
     }
 

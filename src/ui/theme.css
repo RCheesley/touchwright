@@ -21,7 +21,12 @@
   --danger: #a4262c;
   --space: 1rem;
   --radius: 0.375rem;
+
+  /* Comfortable for prose. */
   --measure: 38rem;
+
+  /* The app itself: wide enough to put the board beside the text being typed. */
+  --measure-app: 78rem;
 
   /*
    * The board diagram. Finger colours clear the non-text threshold of 3:1
@@ -88,7 +93,7 @@ body {
 main,
 .masthead,
 .colophon {
-  max-width: var(--measure);
+  max-width: var(--measure-app);
   padding-inline: var(--space);
   padding-block: var(--space);
   margin-inline: auto;
@@ -514,20 +519,40 @@ dd {
   background: var(--surface-sunken);
 }
 
+/*
+ * A grid rather than one long column. Thirteen rungs stacked full width came to
+ * two and a half thousand pixels, which put the statistics and the saving
+ * controls somewhere nobody would find them. The grid flows in rows, so reading
+ * order and Tab order are unchanged: along, then down.
+ */
 .ladder {
-  display: flex;
-  flex-direction: column;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
   gap: 0.5rem;
+  align-content: start;
   padding: 0;
   margin-block: 0.75rem;
   list-style: none;
 }
 
 .ladder-rung {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
   padding: 0.75rem;
   border: 1px solid var(--border);
   border-inline-start: 0.25rem solid var(--border);
   border-radius: var(--radius);
+}
+
+/* A rung is already a narrow column; the page-wide prose floor would widen it. */
+.ladder-rung :where(p) {
+  max-width: none;
+}
+
+/* Buttons line up along the bottom of a row whatever the blurb above them. */
+.ladder-rung > :last-child {
+  margin-block-start: auto;
 }
 
 .ladder-rung[data-state='current'] {
@@ -798,4 +823,117 @@ dd {
   .board-cap {
     transition: none;
   }
+}
+
+/* ---- Page layout ----------------------------------------------------------
+ *
+ * Last in the file on purpose: these rules place the sections the rest of the
+ * sheet has already styled, and placing them here keeps every override after
+ * the thing it overrides.
+ */
+
+/*
+ * The board and the drill text, side by side once there is room.
+ *
+ * They have to be visible at the same time: the readout names the next key in
+ * words and the diagram shows where it is, and a learner reading one while the
+ * other is off screen gets neither. Stacked below the breakpoint, board first,
+ * which is also the order they appear in the markup -- so what the eye follows
+ * and what the Tab key follows never disagree.
+ */
+.workspace {
+  display: grid;
+  gap: calc(var(--space) * 1.5);
+  align-items: start;
+}
+
+@media (width >= 62rem) {
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+
+  /* Both columns stay put while the page scrolls past them. */
+  .workspace > section {
+    position: sticky;
+    top: var(--space);
+  }
+}
+
+/* Grid children default to min-content width; without this the board overflows. */
+.workspace > section {
+  min-width: 0;
+}
+
+/* Anchored sections must not hide under the sticky bar. */
+:where(main section) {
+  scroll-margin-top: 3.5rem;
+}
+
+/*
+ * Choosing a layout and seeing what was found in it: one band of the page, not
+ * two, so the board and the drill start nearer the top.
+ */
+.setup {
+  display: grid;
+  gap: calc(var(--space) * 1.5);
+  align-items: start;
+  margin-block-end: calc(var(--space) * 1.5);
+}
+
+@media (width >= 62rem) {
+  .setup {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.1fr);
+  }
+}
+
+.setup > section {
+  min-width: 0;
+}
+
+.setup h2 {
+  margin-block-start: 0;
+}
+
+/* The summary is reference, not reading: denser than body text. */
+#summary-list {
+  gap: 0.25rem 1rem;
+  font-size: 0.9375rem;
+}
+
+/*
+ * Somewhere to go. Everything below the drill was unreachable without a long
+ * scroll and no sign there was anything there.
+ */
+.section-nav {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--surface);
+  border-block-end: 1px solid var(--border);
+}
+
+.section-nav ul {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  max-width: var(--measure-app);
+  margin-inline: auto;
+  padding: 0.5rem var(--space);
+  list-style: none;
+}
+
+.section-nav a {
+  display: inline-block;
+  padding: 0.25rem 0;
+  color: var(--ink);
+  font-size: 0.9375rem;
+}
+
+/*
+ * Long explanatory text stays readable even in a wide column. Written with
+ * :where() so it is a floor rather than a ceiling: any component that needs a
+ * wider paragraph simply says so and wins.
+ */
+:where(main p, main li, main dd) {
+  max-width: var(--measure);
 }

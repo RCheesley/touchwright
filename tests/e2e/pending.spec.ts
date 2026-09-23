@@ -277,8 +277,15 @@ test.describe('the trainer journeys', () => {
     // must, and the drill is reachable from there without a single click.
     await page.keyboard.press('Tab');
     await expect(page.getByRole('link', { name: 'Skip to main content' })).toBeFocused();
-    await page.keyboard.press('Tab');
-    await expect(page.locator('#layout-file')).toBeFocused();
+
+    // The section navigation sits between the skip link and the content, which is
+    // why the skip link exists: taking it lands on the content directly, so the
+    // nav is never something a keyboard learner has to wade through.
+    await page.keyboard.press('Enter');
+    const stopsToFile = await tabUntil(page, 'layout-file');
+    expect(stopsToFile.at(-1), `tab stops after the skip link were ${stopsToFile.join(', ')}`).toBe(
+      'layout-file',
+    );
 
     const stops = await tabUntil(page, 'drill-start');
     expect(stops.at(-1), `tab stops after the file input were ${stops.join(', ')}`).toBe(
