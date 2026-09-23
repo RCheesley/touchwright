@@ -30,6 +30,7 @@ import {
 import { describeFailure, required } from './dom.js';
 import { createDrillView, SAMPLE_DRILL_TEXT, type DrillView } from './drill-view.js';
 import { DrillTextError, generateDrillText } from '../drill/text.js';
+import { generateRepairText, RepairDrillError } from '../drill/repair.js';
 import { highestUnlockedLesson } from '../drill/scoring.js';
 import { SprintError, sprintLesson, sprintWordCount } from '../drill/sprint.js';
 import { summariseKeymap } from './layout-summary.js';
@@ -226,6 +227,30 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
       // Named only when there is somewhere to advance to, so the result card
       // never offers a rung that does not exist.
       nextLessonName: nextLesson?.name ?? null,
+      // Taking up the offer to repair rebuilds the drill from exactly the keys
+      // that slipped. The keys come from scoring, which took them from this
+      // lesson's own statistics, so they are typeable here by construction --
+      // but generateRepairText throws if they are not, and that throw is
+      // surfaced rather than caught and turned back into an ordinary drill. A
+      // repair drill that quietly practises the wrong keys is the whole thing
+      // this feature exists to avoid.
+      ...(lesson === null
+        ? {}
+        : {
+            onRepair: (weakKeys: readonly string[]): void => {
+              let text: string;
+              try {
+                text = generateRepairText(lesson, weakKeys, { seed: seed() });
+              } catch (cause) {
+                if (cause instanceof RepairDrillError) {
+                  showError(`Could not build a repair drill for ${lesson.name}: ${cause.message}`);
+                  return;
+                }
+                throw cause;
+              }
+              showRepair(keymap, lesson, text);
+            },
+          }),
       // And the offer is real: taking it rebuilds the drill on the next lesson
       // and remembers where the learner has got to.
       ...(nextLesson === null
@@ -323,6 +348,35 @@ export function wireUp(root: ParentNode = document, options: WireUpOptions = {})
    * `showError` hides every section, which is right for a layout that would not
    * parse and wrong here: the lesson on screen is still perfectly good.
    */
+  /**
+   * Replaces the drill surface with a repair drill built from the keys that
+   * slipped, on the lesson they slipped in.
+   *
+   * It carries the lesson's id, so the keys it practises go back into the same
+   * per-key statistics the weak-key report reads. It carries no next lesson: a
+   * repair is not a rung and must never look like one, or a learner could climb
+   * the ladder by fumbling.
+   */
+  function showRepair(keymap: Keymap, lesson: Lesson, text: string): void {
+    clearError();
+    drillView?.destroy();
+    drillView = createDrillView({
+      board: GLOVE80,
+      keymap,
+      text,
+      session,
+      mode: 'repair',
+      lessonId: lesson.id,
+      lessonName: lesson.name,
+      nextLessonName: null,
+      root,
+      onNextKey: followNextKey,
+      onScored: saveAndRefresh,
+    });
+    drillSection.hidden = false;
+    drillStart.focus();
+  }
+
   function showSprintError(message: string): void {
     error.textContent = message;
     error.hidden = false;
